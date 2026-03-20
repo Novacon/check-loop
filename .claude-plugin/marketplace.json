@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "lordknows13-check-loop",
+  "description": "Adversarial plan refinement loop between Claude and Codex — automates iterative review until both models agree",
+  "owner": {
+    "name": "lordknows13"
+  },
+  "metadata": {
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "check-loop",
+      "source": "./plugins/check-loop",
+      "description": "Iterative adversarial plan refinement via /co-refine",
+      "version": "1.0.0",
+      "category": "development"
+    }
+  ]
+}
