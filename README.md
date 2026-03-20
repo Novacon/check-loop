@@ -17,15 +17,62 @@ No more manually copying plans between Claude and Codex.
 
 ## Prerequisites
 
-You need the Codex MCP server configured. If you already use [claude-co-commands](https://github.com/SnakeO/claude-co-commands), you're all set.
+### 1. Node.js
 
-If not, add it:
+The Codex MCP server runs via `npx`, so you need Node.js installed (v18+).
+
+### 2. Codex CLI Login
+
+Authenticate with your OpenAI account (no API key required):
+
+```bash
+npx -y @openai/codex login
+```
+
+This opens your browser — sign in to your OpenAI/ChatGPT account and authorize. Your session is stored locally at `~/.codex/auth.json` and the MCP server picks it up automatically.
+
+For headless/remote machines (no browser):
+
+```bash
+npx -y @openai/codex login --device-auth
+```
+
+This gives you a code to enter at a URL on any device.
+
+To verify you're logged in:
+
+```bash
+npx -y @openai/codex login status
+```
+
+### 3. Codex MCP Server
+
+If you already use [claude-co-commands](https://github.com/SnakeO/claude-co-commands), you're all set — skip this step.
+
+Otherwise, connect the Codex MCP server to Claude Code. Pick one method:
+
+**Option A: CLI (Recommended)**
 
 ```bash
 claude mcp add validate-plans-and-brainstorm-ideas -- npx -y @openai/codex mcp-server
 ```
 
-This requires an OpenAI API key configured for Codex.
+**Option B: Manual config**
+
+Add this to your `~/.claude.json`:
+
+```json
+{
+  "mcpServers": {
+    "validate-plans-and-brainstorm-ideas": {
+      "command": "npx",
+      "args": ["-y", "@openai/codex", "mcp-server"]
+    }
+  }
+}
+```
+
+> **Note:** The server name must be exactly `validate-plans-and-brainstorm-ideas`. The skill references this name when calling MCP tools.
 
 ## Installation
 
