@@ -10,7 +10,7 @@ When you invoke `/co-refine`, it:
 2. Sends it to Codex with instructions to perform a critical review
 3. Analyzes each piece of Codex's feedback — accepts what's valid, fights back on what's overkill or wrong
 4. Updates the plan and sends it back to Codex
-5. Repeats until both models agree (or max 7 rounds)
+5. Repeats until both models agree (or max 20 rounds)
 6. Presents a summary of what changed, what was defended, and any unresolved disagreements
 
 No more manually copying plans between Claude and Codex.

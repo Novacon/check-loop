@@ -13,7 +13,7 @@ Automates iterative plan refinement between Claude (plan author/defender) and Co
 
 ## Configuration
 
-- **Maximum rounds**: 7 (safety limit — convergence usually happens in 2-4 rounds)
+- **Maximum rounds**: 20 (safety limit — large plans can take 10+ rounds to converge)
 - **Convergence signal**: Codex responds with "PLAN APPROVED" when it has no remaining concerns
 
 ## Step 1: Read the Plan and Gather Context
@@ -136,7 +136,7 @@ Review the updated plan and my responses. Rules for this round:
 
 - If Codex responds with "PLAN APPROVED" → proceed to Step 4.
 - If Codex raises new or continued concerns → go back to 3b for the next round.
-- If you have reached the maximum round limit (7) → proceed to Step 4 with unresolved items noted.
+- If you have reached the maximum round limit (20) → proceed to Step 4 with unresolved items noted.
 
 ## Step 4: Present Final Results
 
@@ -147,7 +147,7 @@ After the loop completes (by convergence or round limit), present a summary to t
 ```
 ## Refinement Complete
 
-**Rounds**: [N] of 7 max
+**Rounds**: [N] of 20 max
 **Status**: [Consensus reached / Ended with unresolved items]
 
 ### Changes Made
