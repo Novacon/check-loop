@@ -1,5 +1,5 @@
 ---
-name: co-refine
+name: check-loop
 description: Adversarial plan refinement loop between Claude and Codex. Automates the cycle of Codex reviewing a plan, Claude defending or updating it, and repeating until both models reach consensus. Use when you have a plan that needs battle-testing. Pass the path to the plan file as the argument, or omit to auto-detect.
 ---
 

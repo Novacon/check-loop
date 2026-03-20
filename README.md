@@ -4,7 +4,7 @@ Adversarial plan refinement loop for Claude Code. Automates the cycle of sending
 
 ## What It Does
 
-When you invoke `/co-refine`, it:
+When you invoke `/check-loop`, it:
 
 1. Reads your plan file
 2. Sends it to Codex with instructions to perform a critical review
@@ -97,10 +97,10 @@ Copy the contents of `plugins/check-loop/skills/` into `~/.claude/skills/`.
 ## Usage
 
 ```
-/co-refine path/to/your/plan.md
+/check-loop path/to/your/plan.md
 ```
 
-Or just `/co-refine` if you have an active plan in your session — it will try to auto-detect it.
+Or just `/check-loop` if you have an active plan in your session — it will try to auto-detect it.
 
 ### Example Output
 
@@ -129,7 +129,7 @@ Round 3: PLAN APPROVED — No remaining concerns.
 
 ## How It Works
 
-Unlike `/co-validate` (which does one-shot parallel review), `/co-refine` runs a sequential adversarial loop:
+Unlike `/co-validate` (which does one-shot parallel review), `/check-loop` runs a sequential adversarial loop:
 
 - **Claude** is the plan author and defender
 - **Codex** is the adversarial reviewer

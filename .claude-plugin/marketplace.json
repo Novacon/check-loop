@@ -12,7 +12,7 @@
     {
       "name": "check-loop",
       "source": "./plugins/check-loop",
-      "description": "Iterative adversarial plan refinement via /co-refine",
+      "description": "Iterative adversarial plan refinement via /check-loop",
       "version": "1.0.0",
       "category": "development"
     }
