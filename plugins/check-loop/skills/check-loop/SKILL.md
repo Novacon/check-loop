@@ -27,6 +27,8 @@ Automates iterative plan refinement between Claude (plan author/defender) and Co
 
 Call `mcp__validate-plans-and-brainstorm-ideas__codex` with:
 
+- `model`: `gpt-5.4`
+- `config`: `{"model_reasoning_effort": "xhigh"}`
 - `sandbox`: `read-only`
 - `approval-policy`: `never`
 - `cwd`: (use the current working directory)
