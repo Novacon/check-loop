@@ -1,10 +1,12 @@
 # claude-check-loop
 
-Adversarial plan refinement loop for Claude Code. Automates the cycle of sending your plan to Codex for review, defending or updating it, and repeating until both models reach consensus.
+Adversarial plan refinement and supervised execution for Claude Code. Uses Codex as a real-time reviewer to battle-test plans and oversee implementation.
 
-## What It Does
+## Skills
 
-When you invoke `/check-loop`, it:
+### `/check-loop` — Plan Refinement
+
+Automates the cycle of sending your plan to Codex for review, defending or updating it, and repeating until both models reach consensus.
 
 1. Reads your plan file
 2. Sends it to Codex with instructions to perform a critical review
@@ -13,7 +15,23 @@ When you invoke `/check-loop`, it:
 5. Repeats until both models agree (or max 20 rounds)
 6. Presents a summary of what changed, what was defended, and any unresolved disagreements
 
-No more manually copying plans between Claude and Codex.
+### `/check-loop:execute` — Supervised Execution
+
+Executes an approved plan step-by-step with Codex reviewing each step against the locked plan. Designed to run after `/check-loop` has refined a plan, or on any plan you want to execute with review guardrails.
+
+1. Locks the plan as read-only and captures a git baseline
+2. For each step: implements the code, runs validation gates (tests, TypeScript, lint), sends the diff to Codex for review
+3. User can steer between steps — deviations from the locked plan are tracked and passed to verification
+4. After all steps: a fresh Codex session verifies the full diff against the original plan
+5. Presents a summary of steps completed, fixes applied, and any unresolved disagreements
+
+**Features:**
+- **Steering**: User can inject constraints between steps without restarting
+- **Validation gates**: Tests, TypeScript, lint run after each step before Codex review
+- **Severity tagging**: [minor] concerns auto-resolve after 3 rounds; [critical] always escalate to user
+- **Secret filtering**: `.env`, credentials, and secrets are never sent to Codex
+- **Watchdog**: 120s timeout on Codex calls with retry-then-ask-user fallback
+- **Stash safety**: Dirty working trees are stashed and restored with conflict handling
 
 ## Prerequisites
 
@@ -36,8 +54,6 @@ For headless/remote machines (no browser):
 ```bash
 npx -y @openai/codex login --device-auth
 ```
-
-This gives you a code to enter at a URL on any device.
 
 To verify you're logged in:
 
@@ -72,7 +88,7 @@ Add this to your `~/.claude.json`:
 }
 ```
 
-> **Note:** The server name must be exactly `validate-plans-and-brainstorm-ideas`. The skill references this name when calling MCP tools.
+> **Note:** The server name must be exactly `validate-plans-and-brainstorm-ideas`. The skills reference this name when calling MCP tools.
 
 ## Installation
 
@@ -96,13 +112,28 @@ Copy the contents of `plugins/check-loop/skills/` into `~/.claude/skills/`.
 
 ## Usage
 
+### Plan Refinement
+
 ```
 /check-loop path/to/your/plan.md
 ```
 
 Or just `/check-loop` if you have an active plan in your session — it will try to auto-detect it.
 
-### Example Output
+### Supervised Execution
+
+```
+/check-loop:execute path/to/your/plan.md
+```
+
+Typical workflow:
+
+```
+/check-loop plans/my-feature.md          # Refine the plan with Codex
+/check-loop:execute plans/my-feature.md  # Execute with Codex oversight
+```
+
+### Example Output (Plan Refinement)
 
 ```
 Starting adversarial refinement loop. Sending plan to Codex for review...
@@ -115,28 +146,60 @@ Updating plan and sending back to Codex...
 
 Round 2: Codex raised 1 new concern, accepted pushback on F2.
   - Accepted: 1 (F5)
-  - Rejected: 0
-  - Countered: 0
 Updating plan and sending back to Codex...
 
 Round 3: PLAN APPROVED — No remaining concerns.
 
 ## Refinement Complete
-**Rounds**: 3 of 7 max
+**Rounds**: 3 of 20 max
 **Status**: Consensus reached
 ...
 ```
 
+### Example Output (Supervised Execution)
+
+```
+═══ check-loop:execute ═══
+
+Plan: plans/my-feature.md (locked)
+Baseline: abc1234
+Steps: 3 identified
+
+Step 1 of 3: Add database migration
+  Any steering? (Enter to skip)
+  Implementing...
+  Validation: tests ✓ | tsc ✓
+  Codex review: STEP APPROVED
+  ✓ Step 1 complete
+
+Step 2 of 3: Create lib module
+  Any steering? (Enter to skip)
+  > User: "use the existing Result<T> pattern"
+  Implementing with steering applied...
+  Validation: tests ✓ | tsc ✓
+  Codex review: 1 concern raised
+    C1 [critical]: ACCEPTED — fixed missing null check
+  ✓ Step 2 complete (1 fix applied)
+
+Step 3 of 3: Add API endpoint
+  Any steering? (Enter to skip)
+  Implementing...
+  Validation: tests ✓ | tsc ✓
+  Codex review: STEP APPROVED
+  ✓ Step 3 complete
+
+Verification: VERIFIED — All changes align with the plan.
+
+## Execution Complete
+**Steps**: 3/3 completed
+**Status**: VERIFIED
+```
+
 ## How It Works
 
-Unlike `/co-validate` (which does one-shot parallel review), `/check-loop` runs a sequential adversarial loop:
-
-- **Claude** is the plan author and defender
-- **Codex** is the adversarial reviewer
-- Each round, Claude genuinely evaluates feedback — accepts valid points, pushes back on overkill
-- The loop continues until Codex has no remaining concerns or the round limit is hit
-
-The goal isn't unanimous agreement at any cost — it's a genuinely better plan through honest debate.
+- **Claude** is the plan author, defender, and executor
+- **Codex** is the adversarial reviewer (plan refinement) and implementation supervisor (execution)
+- The goal isn't unanimous agreement at any cost — it's a genuinely better plan and correct implementation through honest debate
 
 ## License
 
