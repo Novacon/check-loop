@@ -1,11 +1,11 @@
 ---
 name: execute
-description: Supervised plan execution with Codex oversight. Executes an approved plan step-by-step with Codex reviewing each step, validation gates, steering, and final verification. Use after /check-loop has refined a plan, or on any plan you want to execute with review guardrails. Pass the path to the plan file as the argument.
+description: Supervised plan execution with Codex oversight. Executes an approved plan continuously without stopping between steps, then presents a final summary for user approval before committing and pushing. Use after /check-loop has refined a plan, or on any plan you want to execute with review guardrails. Pass the path to the plan file as the argument.
 ---
 
 # Supervised Plan Execution with Codex Oversight
 
-Executes an approved plan step-by-step. After each step, Codex reviews the diff against the locked plan. After all steps, a fresh Codex session does full verification. The user can steer between steps.
+Executes an approved plan continuously. Implements all steps, sends each diff to Codex for review, fixes issues inline, then presents a complete summary for user approval before the final commit and push.
 
 ## Arguments
 
@@ -13,10 +13,9 @@ Executes an approved plan step-by-step. After each step, Codex reviews the diff 
 
 ## Configuration
 
-- **Max review rounds per step**: 3 (for [minor] concerns only — [critical] concerns always escalate to user)
+- **Max review rounds per step**: 3 (for [minor] concerns only -- [critical] concerns always escalate to user)
 - **Max verification rounds**: 5
 - **Shell command timeout**: 120s for validation gates, 30s for git operations
-- **Codex MCP timeout**: 120s per call, retry once with nudge before asking user
 
 ## Shell Command Policy
 
@@ -30,18 +29,17 @@ All shell commands run during execution must follow these rules:
 
 1. Read the plan file at the path provided in `$ARGUMENTS`.
 2. Parse the plan into discrete implementation steps. Use numbered steps, phases, or sections from the plan. If the plan has no clear structure, break it into logical chunks, show the user the proposed breakdown, and wait for confirmation before proceeding.
-3. Store the full plan content — this is the **locked plan**. It cannot be modified during execution. If a step turns out to be wrong or impossible, surface it to the user rather than silently changing the plan.
-4. Initialize an empty **approved deviations log** — this tracks user-approved departures from the locked plan (from steering).
-5. Tell the user:
+3. Store the full plan content -- this is the **locked plan**. It cannot be modified during execution. If a step turns out to be wrong or impossible, surface it to the user rather than silently changing the plan.
+4. Tell the user:
 ```
-═══ check-loop:execute ═══
+--- check-loop:execute ---
 
 Plan: [plan file path] (locked)
 Steps: [N] identified
 
 [List each step with one-line description]
 
-Starting execution...
+Executing all steps continuously...
 ```
 
 ## Step 2: Capture Baseline
@@ -49,27 +47,60 @@ Starting execution...
 1. Check if the working tree is dirty (`git status --porcelain`).
    - If dirty: stash with `git stash --include-untracked -m "check-loop-execute: pre-execution stash"`
    - Tell user: "Stashed uncommitted changes. Will restore after execution."
-2. Record the current commit: `git rev-parse HEAD` → store as `BASELINE_COMMIT`.
+2. Record the current commit: `git rev-parse HEAD` -> store as `BASELINE_COMMIT`.
 3. Tell user: `Baseline: [short hash]`
 
 ## Step 3: Initialize Codex Session
 
-Call `mcp__validate-plans-and-brainstorm-ideas__codex` with:
+Call `mcp__codex-cli__codex` with:
 
+- `model`: `gpt-5.4`
+- `reasoningEffort`: `xhigh`
+- `sandbox`: `read-only`
+- `workingDirectory`: (use the current working directory)
 - `prompt`: construct exactly as shown below
 
 ```text
-You are a senior staff engineer supervising the execution of an approved implementation plan. Your role is to ensure each step is implemented correctly and stays true to the plan.
+You are a senior staff engineer supervising the execution of an approved implementation plan. Your role is to ensure each step is implemented correctly, stays true to the plan, and adheres to the project's code quality standards ("desloppify").
 
 Rules:
 - DO NOT implement or write any code. Review ONLY.
 - Compare each step's implementation against the original plan.
-- Flag: bugs, deviations from plan, missing edge cases, security issues.
+- Flag: bugs, deviations from plan, missing edge cases, security issues, AND violations of the desloppify standards below.
 - Do NOT nitpick style, naming, or minor preferences unless they introduce real problems.
 - For each step review, respond with either:
-  - "STEP APPROVED" if the implementation matches the plan and is correct.
-  - Numbered concerns (C1, C2...) if there are issues, with specific references to the code. Tag each concern with severity: [critical] for bugs/security/plan-deviation, [minor] for style/preference.
-- Be concise. The author is implementing live — don't slow them down with essays.
+  - "STEP APPROVED" if the implementation matches the plan, is correct, and follows desloppify standards.
+  - Numbered concerns (C1, C2...) if there are issues, with specific references to the code. Tag each concern with severity: [critical] for bugs/security/plan-deviation/desloppify-violation, [minor] for style/preference.
+- Be concise. The author is implementing live -- don't slow them down with essays.
+
+## Desloppify Code Quality Standards
+
+All code must follow these patterns. Violations are [critical] concerns.
+
+### Thin Route Handlers
+API route files are orchestrators only (~30-60 lines). They parse input, call a lib function, and map the result to an HTTP response. No business logic, validation, DB queries, or email sending in route files.
+
+### Business Logic in lib/
+All validation, DB queries, audit logging, and side effects go in lib modules. Lib functions return Result<T>, never NextResponse.
+
+```
+type Result<T> = { ok: true; data: T } | { ok: false; code: string; message: string; status: number };
+```
+
+### Standardized Error Responses
+Use helpers from api-utils.ts for generic errors: validationError(), unauthorizedError(), forbiddenError(), notFoundError(), conflictError(), rateLimitError(), serverError(). Domain-specific error codes stay inline.
+
+### Outer Try/Catch
+Every route handler wraps its body in try/catch using serverError('Context', error) -- no inline catch blocks with NextResponse.json.
+
+### Tests
+New lib modules must have corresponding test files. Test business logic via Result<T> assertions, not HTTP response parsing. Mock Supabase and external services, never hit real APIs.
+
+### General
+- No `as unknown as` type casts
+- No step-narrating comments (e.g. "// Step 1: Get the user")
+- Consistent error contracts across all routes
+- Open redirect prevention: all external redirects use safeStripeRedirect()
 
 Here is the plan being executed:
 
@@ -77,32 +108,25 @@ Here is the plan being executed:
 {paste the full contents of the plan file}
 </plan>
 
-I will send you each step's changes as they are implemented. Review each one against this plan.
+I will send you each step's changes as they are implemented. Review each one against this plan and the desloppify standards.
 ```
 
-Save the `threadId` from the response — you will need it for all step reviews.
+Save the `sessionId` from the response -- you will need it for all step reviews.
 
-## Step 4: Execute Each Step
+## Step 4: Execute All Steps Continuously
 
-For each step (1 through N), do the following:
+For each step (1 through N), do the following **without stopping for user input**:
 
-### 4a. Steering Check
+### 4a. Announce Step
 
-Use `AskUserQuestion` to prompt the user before each step. The user can type steering input or press Enter to skip.
-
+Print a brief status line:
 ```
 Step [N] of [M]: [one-line description from plan]
-Any steering for this step? (press Enter to skip)
 ```
-
-If the user provides steering that contradicts the locked plan:
-1. Flag it: "This steering deviates from the locked plan (step N says X, you're asking for Y). Apply anyway?"
-2. If user confirms: add to the approved deviations log with step number and description.
-3. If user declines: proceed with the original plan.
 
 ### 4b. Implement the Step
 
-Write the code, create files, edit files, run commands — whatever the plan calls for. Apply any user steering from 4a.
+Write the code, create files, edit files, run commands -- whatever the plan calls for.
 
 ### 4c. Run Validation Gates
 
@@ -112,7 +136,7 @@ After implementing, run applicable checks (all with explicit timeouts per Shell 
 2. **Tests**: If the project has tests, run the test command (e.g., `npx vitest --run`, timeout: 120s)
 3. **Lint**: If lint is configured, run lint (timeout: 120s)
 
-Report results to user:
+Report results inline:
 ```
 Validation: tests [pass/fail/skipped] | tsc [pass/fail/skipped] | lint [pass/fail/skipped]
 ```
@@ -132,9 +156,11 @@ git diff --cached HEAD
 
 ### 4e. Send Diff to Codex for Review
 
-Use `mcp__validate-plans-and-brainstorm-ideas__codex-reply` with:
+Use `mcp__codex-cli__codex` with:
 
-- `threadId`: (from Step 3)
+- `sessionId`: (from Step 3)
+- `model`: `gpt-5.4`
+- `reasoningEffort`: `xhigh`
 - `prompt`: construct as shown below
 
 ```text
@@ -151,21 +177,21 @@ Validation results:
 - TypeScript: {pass/fail/skipped}
 - Lint: {pass/fail/skipped}
 
-Does this implementation match what the plan specifies for this step? Review for correctness, bugs, and plan alignment.
+Does this implementation match what the plan specifies for this step? Review for correctness, bugs, plan alignment, and desloppify standards compliance.
 ```
 
 ### 4f. Handle Codex Response
 
-**If "STEP APPROVED"**: Commit the step and move to the next one:
+**If "STEP APPROVED"**: Create a step commit and move to the next step:
 ```bash
 git commit -m "step {N}: {short description}"
 ```
 
 **If concerns raised**: For EVERY numbered concern, make a judgment:
 
-1. **ACCEPT** — Valid bug, security issue, or plan deviation. Fix it, re-run validation gates (4c), re-capture diff (4d), re-send to Codex (4e).
+1. **ACCEPT** -- Valid bug, security issue, or plan deviation. Fix it, re-run validation gates (4c), re-capture diff (4d), re-send to Codex (4e).
 
-2. **REJECT** — Style preference, overkill, or incorrect assumption. Push back with specific reasoning and move on.
+2. **REJECT** -- Style preference, overkill, or incorrect assumption. Push back with specific reasoning and move on.
 
 **Severity rules:**
 - **[minor] concerns** (style, naming, preferences): Max 3 review rounds per step. After 3 rounds with unresolved [minor] items, log the disagreement and commit.
@@ -176,19 +202,15 @@ After resolution, commit:
 git commit -m "step {N}: {short description}"
 ```
 
-### 4g. Report Step Status
+### 4g. Report Step Status (inline)
 
 ```
-Step N: COMPLETE [Approved / Approved with fixes / Escalated to user]
+Step N: COMPLETE [Approved / Approved with fixes]
 ```
 
-### 4h. Watchdog
+Then immediately proceed to the next step.
 
-If Codex doesn't respond within 120 seconds on any MCP call:
-1. Retry once with a nudge via `mcp__validate-plans-and-brainstorm-ideas__codex-reply`: "Please respond with your assessment of the changes."
-2. Second timeout → ask user: "Codex timed out on step N review. Continue without review or retry?"
-
-## Step 5: Verification (Phase 2)
+## Step 5: Verification
 
 After ALL steps are complete, run full verification.
 
@@ -202,7 +224,13 @@ Apply the same secret-filtering rules as step diffs.
 
 ### 5b. Start Fresh Codex Session
 
-Call `mcp__validate-plans-and-brainstorm-ideas__codex` (NEW session — do NOT reuse the step-review thread) with:
+Call `mcp__codex-cli__codex` (NEW session -- do NOT reuse the step-review session) with:
+
+- `model`: `gpt-5.4`
+- `reasoningEffort`: `xhigh`
+- `sandbox`: `read-only`
+- `workingDirectory`: (use the current working directory)
+- `prompt`:
 
 ```text
 You are a senior staff engineer performing a final verification of a completed implementation against its approved plan.
@@ -213,12 +241,6 @@ Here is the original plan:
 {full plan content}
 </plan>
 
-The following deviations from the plan were explicitly approved by the user during execution:
-
-<approved_deviations>
-{list of approved deviations with step number and description, or "None" if no deviations were approved}
-</approved_deviations>
-
 Here is the complete diff of all changes made during execution:
 
 <full_diff>
@@ -226,16 +248,15 @@ Here is the complete diff of all changes made during execution:
 </full_diff>
 
 Final verification checklist:
-1. Do all changes align with the original plan (accounting for approved deviations)?
+1. Do all changes align with the original plan?
 2. Are there any steps that were skipped or partially implemented?
-3. Are there any changes that were NOT in the plan AND not in the approved deviations list (unauthorized scope creep)?
+3. Are there any changes that were NOT in the plan (unauthorized scope creep)?
 4. Any bugs, security issues, or missing edge cases in the full picture?
+5. Do all changes follow desloppify standards? (thin routes, business logic in lib/ returning Result<T>, standardized errors, outer try/catch, no type casts, no narrating comments, tests for new lib modules)
 
-If everything checks out, respond with: "VERIFIED — All changes align with the plan."
+If everything checks out, respond with: "VERIFIED -- All changes align with the plan."
 Otherwise, list your concerns with V-numbered labels (V1, V2...) and tag each with severity: [critical] or [minor].
 ```
-
-Save the new `threadId`.
 
 ### 5c. Handle Verification Response
 
@@ -243,11 +264,13 @@ Save the new `threadId`.
 
 **If concerns raised**: For each concern:
 1. Fix or defend (same judgment rules as step review)
-2. **After each fix**: commit the fix (`git add -A && git commit -m "verify fix: {description}"`), then **regenerate the filtered diff** (`git diff {BASELINE_COMMIT}..HEAD`) and re-send to Codex via `mcp__validate-plans-and-brainstorm-ideas__codex-reply` with the fresh diff. Never re-review a stale snapshot.
+2. **After each fix**: commit the fix (`git add -A && git commit -m "verify fix: {description}"`), then regenerate the filtered diff and re-send to Codex with the fresh diff.
 3. **[critical] concerns** escalate to user (same rule as step review)
 4. Max 5 verification rounds. If still unresolved, log remaining items.
 
-## Step 6: Restore Stash and Present Results
+## Step 6: Present Summary and Await Approval
+
+**Do NOT push yet.** Present the full summary and wait for the user to approve.
 
 ### 6a. Restore Pre-Execution Stash (if applicable)
 
@@ -259,26 +282,18 @@ If changes were stashed in Step 2:
 ### 6b. Present Final Summary
 
 ```
-## Execution Complete
+## Execution Complete -- Awaiting Approval
 
 **Plan**: [plan file path]
 **Baseline**: [BASELINE_COMMIT short hash]
 **Steps**: [completed]/[total] completed
 **Codex reviews**: [N] step reviews + 1 final verification
-**Status**: [VERIFIED / Ended with unresolved items]
+**Verification**: [VERIFIED / Ended with unresolved items]
 
 ### Steps Summary
-1. [status] [description] — [outcome]
-2. [status] [description] — [outcome]
+1. [status] [description] -- [outcome]
+2. [status] [description] -- [outcome]
 ...
-
-### Steering Applied
-- Step N: "[user's steering input]"
-(or "None")
-
-### Approved Deviations
-- Step N: [description of deviation from locked plan]
-(or "None")
 
 ### Fixes from Codex Review
 - Step N [severity]: [what was fixed]
@@ -287,7 +302,19 @@ If changes were stashed in Step 2:
 ### Unresolved Disagreements (if any)
 - [concern]: [both perspectives]
 (or "None")
+
+### Commits Created
+[list of commit hashes and messages from BASELINE_COMMIT..HEAD]
+
+Ready to push to remote? (y/n)
 ```
+
+### 6c. Wait for User Approval
+
+Use `AskUserQuestion` to ask: "Push these commits to remote? (y/n)"
+
+- **If yes**: Run `git push` and confirm success.
+- **If no**: Tell user: "Commits are local. You can review with `git log {BASELINE_COMMIT}..HEAD` and push when ready."
 
 ## Edge Cases
 
@@ -295,7 +322,7 @@ If changes were stashed in Step 2:
 If a step can't be implemented (missing dependency, conflicting code, etc.):
 1. Do NOT silently modify the plan.
 2. Tell user: "Step N is blocked: [reason]. Options: skip it, modify the plan, or abort."
-3. Wait for user input via `AskUserQuestion` — no timeout.
+3. Wait for user input -- no timeout.
 
 ### Codex disagrees with plan-matching implementation
 If Codex says "this is wrong" but the implementation matches the plan exactly, defend: "This matches the approved plan (section X). The plan was already reviewed. Moving on."
@@ -310,6 +337,6 @@ If the user asks to stop:
 
 - Codex is a **peer reviewer**, not an authority. You know the plan and codebase context better.
 - Fight for correct implementations. Do not capitulate just because Codex pushed back twice.
-- If Codex keeps re-raising the same rejected [minor] point without new reasoning, say "Already addressed — moving on."
+- If Codex keeps re-raising the same rejected [minor] point without new reasoning, say "Already addressed -- moving on."
 - If Codex raises something you genuinely missed and it's clearly right, accept it immediately.
 - The goal is correct implementation of the plan, not unanimous agreement at any cost.

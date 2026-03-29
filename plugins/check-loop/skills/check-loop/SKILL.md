@@ -13,7 +13,7 @@ Automates iterative plan refinement between Claude (plan author/defender) and Co
 
 ## Configuration
 
-- **Maximum rounds**: 20 (safety limit — large plans can take 10+ rounds to converge)
+- **Maximum rounds**: 40 (safety limit — large plans can take 10+ rounds to converge)
 - **Convergence signal**: Codex responds with "PLAN APPROVED" when it has no remaining concerns
 
 ## Step 1: Read the Plan and Gather Context
@@ -25,19 +25,18 @@ Automates iterative plan refinement between Claude (plan author/defender) and Co
 
 ## Step 2: Send Plan to Codex for Initial Review
 
-Call `mcp__validate-plans-and-brainstorm-ideas__codex` with:
+Call `mcp__codex-cli__codex` with:
 
 - `model`: `gpt-5.4`
-- `config`: `{"model_reasoning_effort": "xhigh"}`
+- `reasoningEffort`: `xhigh`
 - `sandbox`: `read-only`
-- `approval-policy`: `never`
-- `cwd`: (use the current working directory)
+- `workingDirectory`: (use the current working directory)
 - `prompt`: construct exactly as shown below
 
 ### Initial Review Prompt
 
 ```text
-You are a senior staff engineer performing an adversarial review of an implementation plan. Your role is to find genuine problems — not to nitpick or rubber-stamp.
+You are a senior staff engineer performing an adversarial review of an implementation plan. Your role is to find genuine problems — not to nitpick or rubber-stamp. Don't hallucinate.
 
 Rules:
 - DO NOT implement or write any code. Review ONLY.
@@ -62,7 +61,7 @@ Plan to review:
 </plan>
 ```
 
-Save the `threadId` from the response — you will need it for all subsequent rounds.
+Save the `sessionId` from the response — you will need it for all subsequent rounds.
 
 ## Step 3: The Refinement Loop
 
@@ -107,9 +106,11 @@ Updating plan and sending back to Codex...
 
 #### 3e. Send Updated Plan and Response to Codex
 
-Use `mcp__validate-plans-and-brainstorm-ideas__codex-reply` with:
+Use `mcp__codex-cli__codex` with:
 
-- `threadId`: (from the Codex session)
+- `sessionId`: (from Step 2)
+- `model`: `gpt-5.4`
+- `reasoningEffort`: `xhigh`
 - `prompt`: construct as shown below
 
 ```text
@@ -138,7 +139,7 @@ Review the updated plan and my responses. Rules for this round:
 
 - If Codex responds with "PLAN APPROVED" → proceed to Step 4.
 - If Codex raises new or continued concerns → go back to 3b for the next round.
-- If you have reached the maximum round limit (20) → proceed to Step 4 with unresolved items noted.
+- If you have reached the maximum round limit (40) → proceed to Step 4 with unresolved items noted.
 
 ## Step 4: Present Final Results
 
@@ -149,7 +150,7 @@ After the loop completes (by convergence or round limit), present a summary to t
 ```
 ## Refinement Complete
 
-**Rounds**: [N] of 20 max
+**Rounds**: [N] of 40 max
 **Status**: [Consensus reached / Ended with unresolved items]
 
 ### Changes Made
