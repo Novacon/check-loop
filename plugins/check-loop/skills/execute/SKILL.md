@@ -1,11 +1,11 @@
 ---
 name: execute
-description: Supervised plan execution with Codex oversight. Executes an approved plan continuously without stopping between steps, then presents a final summary for user approval before committing and pushing. Use after /check-loop has refined a plan, or on any plan you want to execute with review guardrails. Pass the path to the plan file as the argument.
+description: Supervised plan execution with Codex oversight and subagent implementation. Dispatches fresh subagents per step with two-stage review (spec compliance + code quality) before Codex review. Pass the path to the plan file as the argument.
 ---
 
-# Supervised Plan Execution with Codex Oversight
+# Supervised Plan Execution with Codex Oversight + Subagent Implementation
 
-Executes an approved plan continuously. Implements all steps, sends each diff to Codex for review, fixes issues inline, then presents a complete summary for user approval before the final commit and push.
+Executes an approved plan continuously. Dispatches a fresh implementer subagent per step, runs two-stage review (spec compliance + code quality), then sends each diff to Codex for final review. Presents a complete summary for user approval before the final commit and push.
 
 ## Arguments
 
@@ -14,6 +14,7 @@ Executes an approved plan continuously. Implements all steps, sends each diff to
 ## Configuration
 
 - **Max review rounds per step**: 3 (for [minor] concerns only -- [critical] concerns always escalate to user)
+- **Max spec/quality review loops**: 3 per reviewer per step
 - **Max verification rounds**: 5
 - **Shell command timeout**: 120s for validation gates, 30s for git operations
 
@@ -25,19 +26,39 @@ All shell commands run during execution must follow these rules:
 - **No watch mode**: Never use `--watch` or `--watchAll`. Use `--run` (vitest), `--watchAll=false` (jest)
 - **Hang handling**: If a command exceeds its timeout, report to user with the command name and timeout, ask whether to skip validation or debug
 
+## Subagent Strategy
+
+Each step is implemented by a fresh subagent with isolated context. This preserves the orchestrator's context for coordination and review while giving implementers focused, clean working environments.
+
+**Why subagents:**
+- Fresh context per step -- no confusion from prior steps
+- Orchestrator stays focused on coordination, not implementation details
+- Subagents can ask questions before starting work
+- Failed steps don't pollute context for subsequent steps
+
+**Three review layers per step:**
+1. **Spec compliance review** (subagent) -- Did the implementer build what was requested? Nothing more, nothing less.
+2. **Code quality review** (subagent) -- Is the implementation well-built, clean, tested, maintainable?
+3. **Codex review** (external) -- Final check against plan alignment and desloppify standards.
+
+**Model selection:**
+- **opus** -- Default for all implementer subagents and all reviewers. Business logic, API routes, integrations, auth, payments, and anything touching backend code.
+- **sonnet** -- Only for pure frontend presentation tasks: styling tweaks, layout changes, component markup with a clear spec and no business logic. When in doubt, use opus.
+
 ## Step 1: Read the Plan and Prepare
 
 1. Read the plan file at the path provided in `$ARGUMENTS`.
 2. Parse the plan into discrete implementation steps. Use numbered steps, phases, or sections from the plan. If the plan has no clear structure, break it into logical chunks, show the user the proposed breakdown, and wait for confirmation before proceeding.
 3. Store the full plan content -- this is the **locked plan**. It cannot be modified during execution. If a step turns out to be wrong or impossible, surface it to the user rather than silently changing the plan.
-4. Tell the user:
+4. For each step, assess task complexity for model selection (see Subagent Strategy).
+5. Tell the user:
 ```
 --- check-loop:execute ---
 
 Plan: [plan file path] (locked)
 Steps: [N] identified
 
-[List each step with one-line description]
+[List each step with one-line description and assigned model]
 
 Executing all steps continuously...
 ```
@@ -121,16 +142,44 @@ For each step (1 through N), do the following **without stopping for user input*
 
 Print a brief status line:
 ```
-Step [N] of [M]: [one-line description from plan]
+Step [N] of [M]: [one-line description from plan] (model: [opus/sonnet])
 ```
 
-### 4b. Implement the Step
+### 4b. Dispatch Implementer Subagent
 
-Write the code, create files, edit files, run commands -- whatever the plan calls for.
+Dispatch a fresh subagent using the Agent tool to implement this step. Use the template in `./implementer-prompt.md` to construct the prompt.
 
-### 4c. Run Validation Gates
+**Provide the subagent with:**
+- Full text of this step from the plan (paste it, don't make subagent read the plan file)
+- Scene-setting context: where this step fits in the overall plan, what prior steps produced, any dependencies
+- Working directory
+- The desloppify standards (included in the implementer prompt template)
 
-After implementing, run applicable checks (all with explicit timeouts per Shell Command Policy):
+**Select model** based on task complexity (see Subagent Strategy section).
+
+**Important:** The subagent must stage changes (`git add`) but NOT commit. The orchestrator manages commits after all reviews pass.
+
+### 4c. Handle Implementer Status
+
+The implementer subagent reports one of four statuses:
+
+**DONE:** Proceed to validation gates (4d).
+
+**DONE_WITH_CONCERNS:** Read the concerns before proceeding. If concerns are about correctness or scope, address them before review. If they're observations (e.g., "this file is getting large"), note them and proceed to validation.
+
+**NEEDS_CONTEXT:** The implementer needs information that wasn't provided. Gather the missing context (read files, check git history, etc.) and re-dispatch a fresh subagent with the additional information.
+
+**BLOCKED:** The implementer cannot complete the step. Assess the blocker:
+1. If it's a context problem, provide more context and re-dispatch
+2. If the task requires more reasoning, re-dispatch with a more capable model
+3. If the task is too large, break it into smaller pieces and dispatch subagents for each piece sequentially
+4. If the plan itself is wrong, escalate to user: "Step N is blocked: [reason]. Options: skip it, modify the plan, or abort."
+
+**Never** ignore an escalation or force the same model to retry without changes. If the implementer said it's stuck, something needs to change.
+
+### 4d. Run Validation Gates
+
+After implementation, run applicable checks (all with explicit timeouts per Shell Command Policy):
 
 1. **TypeScript**: If the project uses TypeScript, run `npx tsc --noEmit` (timeout: 120s)
 2. **Tests**: If the project has tests, run the test command (e.g., `npx vitest --run`, timeout: 120s)
@@ -141,9 +190,53 @@ Report results inline:
 Validation: tests [pass/fail/skipped] | tsc [pass/fail/skipped] | lint [pass/fail/skipped]
 ```
 
-If a gate fails critically: fix the issue before proceeding to Codex review. If a gate command hangs past timeout: report to user and ask whether to skip or debug.
+If a gate fails: dispatch a fresh fix subagent with the error output and instructions to fix it. After the fix subagent completes, re-run validation gates. If validation still fails after 3 fix attempts, escalate to user.
 
-### 4d. Capture Step Diff
+If a gate command hangs past timeout: report to user and ask whether to skip or debug.
+
+### 4e. Spec Compliance Review
+
+Dispatch a spec compliance reviewer subagent using `model: "opus"` and the template in `./spec-reviewer-prompt.md`.
+
+**Provide:**
+- Full text of this step's requirements from the plan
+- The implementer's report of what they built
+- List of files changed
+- Working directory (so reviewer can read the actual code)
+
+**If SPEC_COMPLIANT:** Proceed to code quality review (4f).
+
+**If SPEC_ISSUES:** Dispatch a fresh fix subagent with:
+- The specific issues found by the spec reviewer
+- The original step requirements
+- Instructions to fix only the identified gaps
+
+After the fix subagent completes:
+1. Re-run validation gates (4d)
+2. Re-dispatch spec compliance reviewer
+3. Max 3 spec review loops. After 3 loops with unresolved issues, escalate to user.
+
+**Important:** Do NOT proceed to code quality review until spec compliance passes.
+
+### 4f. Code Quality Review
+
+Dispatch a code quality reviewer subagent using `model: "opus"` and the template in `./code-quality-reviewer-prompt.md`.
+
+**Provide:**
+- The implementer's report
+- Step requirements from the plan
+- List of files changed
+- Working directory (so reviewer can read the actual code)
+
+**If QUALITY_APPROVED:** Proceed to Codex review (4h).
+
+**If QUALITY_ISSUES:**
+- **[critical] issues:** Dispatch a fresh fix subagent. After fix, re-run validation (4d), re-dispatch quality reviewer.
+- **[important] issues:** Dispatch a fresh fix subagent. After fix, re-dispatch quality reviewer.
+- **[minor] issues:** Log them and proceed.
+- Max 3 quality review loops. After 3 loops, log remaining disagreements and proceed.
+
+### 4g. Capture Step Diff
 
 Stage all changes (including new files) and generate the diff for this step only:
 
@@ -154,7 +247,7 @@ git diff --cached HEAD
 
 **Secret filtering**: Before sending to Codex, exclude files matching: `*.env*`, `*.secret*`, `*credentials*`, `**/secrets/**`. Keep the full unfiltered diff locally.
 
-### 4e. Send Diff to Codex for Review
+### 4h. Send Diff to Codex for Review
 
 Use `mcp__codex-cli__codex` with:
 
@@ -177,10 +270,14 @@ Validation results:
 - TypeScript: {pass/fail/skipped}
 - Lint: {pass/fail/skipped}
 
+Subagent review results:
+- Spec compliance: {SPEC_COMPLIANT / SPEC_COMPLIANT after N fix rounds}
+- Code quality: {QUALITY_APPROVED / QUALITY_APPROVED after N fix rounds}
+
 Does this implementation match what the plan specifies for this step? Review for correctness, bugs, plan alignment, and desloppify standards compliance.
 ```
 
-### 4f. Handle Codex Response
+### 4i. Handle Codex Response
 
 **If "STEP APPROVED"**: Create a step commit and move to the next step:
 ```bash
@@ -189,7 +286,7 @@ git commit -m "step {N}: {short description}"
 
 **If concerns raised**: For EVERY numbered concern, make a judgment:
 
-1. **ACCEPT** -- Valid bug, security issue, or plan deviation. Fix it, re-run validation gates (4c), re-capture diff (4d), re-send to Codex (4e).
+1. **ACCEPT** -- Valid bug, security issue, or plan deviation. Dispatch a fresh fix subagent to fix it, re-run validation gates (4d), re-capture diff (4g), re-send to Codex (4h).
 
 2. **REJECT** -- Style preference, overkill, or incorrect assumption. Push back with specific reasoning and move on.
 
@@ -202,10 +299,14 @@ After resolution, commit:
 git commit -m "step {N}: {short description}"
 ```
 
-### 4g. Report Step Status (inline)
+### 4j. Report Step Status (inline)
 
 ```
 Step N: COMPLETE [Approved / Approved with fixes]
+  Implementer: [model used]
+  Spec review: [SPEC_COMPLIANT / SPEC_COMPLIANT after N fix rounds]
+  Quality review: [QUALITY_APPROVED / QUALITY_APPROVED after N fix rounds]
+  Codex review: [Approved / Approved with fixes]
 ```
 
 Then immediately proceed to the next step.
@@ -263,7 +364,7 @@ Otherwise, list your concerns with V-numbered labels (V1, V2...) and tag each wi
 **If "VERIFIED"**: Proceed to Step 6.
 
 **If concerns raised**: For each concern:
-1. Fix or defend (same judgment rules as step review)
+1. Fix or defend (same judgment rules as step review). Dispatch fix subagents for accepted concerns.
 2. **After each fix**: commit the fix (`git add -A && git commit -m "verify fix: {description}"`), then regenerate the filtered diff and re-send to Codex with the fresh diff.
 3. **[critical] concerns** escalate to user (same rule as step review)
 4. Max 5 verification rounds. If still unresolved, log remaining items.
@@ -287,16 +388,18 @@ If changes were stashed in Step 2:
 **Plan**: [plan file path]
 **Baseline**: [BASELINE_COMMIT short hash]
 **Steps**: [completed]/[total] completed
-**Codex reviews**: [N] step reviews + 1 final verification
+**Reviews**: [N] spec reviews + [N] quality reviews + [N] Codex reviews + 1 final verification
 **Verification**: [VERIFIED / Ended with unresolved items]
 
 ### Steps Summary
-1. [status] [description] -- [outcome]
-2. [status] [description] -- [outcome]
+| Step | Description | Model | Spec | Quality | Codex | Outcome |
+|------|-------------|-------|------|---------|-------|---------|
+| 1 | [desc] | [model] | [result] | [result] | [result] | [outcome] |
+| 2 | [desc] | [model] | [result] | [result] | [result] | [outcome] |
 ...
 
-### Fixes from Codex Review
-- Step N [severity]: [what was fixed]
+### Fixes from Reviews
+- Step N [reviewer] [severity]: [what was fixed]
 (or "None")
 
 ### Unresolved Disagreements (if any)
@@ -324,8 +427,20 @@ If a step can't be implemented (missing dependency, conflicting code, etc.):
 2. Tell user: "Step N is blocked: [reason]. Options: skip it, modify the plan, or abort."
 3. Wait for user input -- no timeout.
 
+### Implementer subagent asks questions
+Answer clearly and completely from your knowledge of the plan and codebase. Provide additional context files if needed. Re-dispatch a fresh subagent with the answers included in the prompt.
+
+### Implementer repeatedly fails
+If an implementer subagent fails the same step twice:
+1. First retry: re-dispatch with more context
+2. Second retry: re-dispatch with a more capable model
+3. Third failure: escalate to user with full details of what's been tried
+
 ### Codex disagrees with plan-matching implementation
 If Codex says "this is wrong" but the implementation matches the plan exactly, defend: "This matches the approved plan (section X). The plan was already reviewed. Moving on."
+
+### Subagent reviewer disagrees with Codex
+If a subagent reviewer approved something that Codex flags (or vice versa), evaluate the concern independently. Each reviewer has different strengths -- subagent reviewers read the actual code, Codex reviews the diff. Use your judgment.
 
 ### User aborts mid-execution
 If the user asks to stop:
@@ -340,3 +455,12 @@ If the user asks to stop:
 - If Codex keeps re-raising the same rejected [minor] point without new reasoning, say "Already addressed -- moving on."
 - If Codex raises something you genuinely missed and it's clearly right, accept it immediately.
 - The goal is correct implementation of the plan, not unanimous agreement at any cost.
+
+## How To Treat Subagent Responses
+
+- Subagents are **specialists** with fresh, focused context. Trust their domain expertise.
+- If an implementer reports BLOCKED or NEEDS_CONTEXT, something genuinely needs to change. Don't retry the same thing.
+- If a spec reviewer flags missing requirements, verify by reading the code yourself before dispatching a fix. The reviewer reads actual code -- take their findings seriously.
+- If a code quality reviewer flags issues, evaluate severity honestly. Don't downgrade [critical] to [minor] to avoid a fix round.
+- Fix subagents should get specific instructions about what to fix and why. Don't just say "fix the issues" -- list them explicitly.
+- Never dispatch multiple implementation subagents in parallel for the same step (they'll conflict). Sequential only.

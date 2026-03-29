@@ -15,22 +15,27 @@ Automates the cycle of sending your plan to Codex for review, defending or updat
 5. Repeats until both models agree (or max 40 rounds)
 6. Presents a summary of what changed, what was defended, and any unresolved disagreements
 
-### `/check-loop:execute` — Supervised Execution
+### `/check-loop:execute` — Supervised Execution with Subagent Implementation
 
-Executes an approved plan continuously with Codex reviewing each step against the locked plan. Designed to run after `/check-loop` has refined a plan, or on any plan you want to execute with review guardrails.
+Executes an approved plan continuously using fresh subagents per step, with three review layers before committing. Designed to run after `/check-loop` has refined a plan, or on any plan you want to execute with review guardrails.
 
 1. Locks the plan as read-only and captures a git baseline
-2. Executes all steps continuously — no stopping between steps
-3. For each step: implements the code, runs validation gates (tests, TypeScript, lint), sends the diff to Codex for review
-4. Codex reviews against both the plan and desloppify code quality standards (thin routes, Result<T>, standardized errors, tests)
-5. After all steps: a fresh Codex session verifies the full diff against the original plan + desloppify standards
-6. Presents a complete summary and waits for user approval before pushing
+2. For each step: dispatches a fresh implementer subagent (opus by default, sonnet for pure frontend presentation tasks)
+3. Runs validation gates (tests, TypeScript, lint) on the subagent's work
+4. Dispatches a spec compliance reviewer subagent to verify the implementation matches requirements -- nothing more, nothing less
+5. Dispatches a code quality reviewer subagent to check desloppify standards and general quality
+6. Sends the diff to Codex (gpt-5.4, xhigh reasoning) for final review against the plan
+7. After all steps: a fresh Codex session verifies the full diff against the original plan
+8. Presents a complete summary and waits for user approval before pushing
 
 **Features:**
-- **Continuous execution**: Runs through all steps without stopping — only pauses at the end for approval
-- **Desloppify enforcement**: Codex reviews code against project quality standards (thin routes, business logic in lib/, Result<T> returns, outer try/catch, tests for new modules)
-- **Validation gates**: Tests, TypeScript, lint run after each step before Codex review
-- **Severity tagging**: [minor] concerns auto-resolve after 3 rounds; [critical] (including desloppify violations) always escalate to user
+- **Subagent implementation**: Fresh implementer subagent per step with isolated context -- no confusion from prior steps, no context pollution
+- **Three review layers**: Spec compliance (subagent) -> code quality (subagent) -> Codex (external). Each catches different classes of issues.
+- **Continuous execution**: Runs through all steps without stopping -- only pauses at the end for approval
+- **Desloppify enforcement**: Code quality reviewer and Codex both enforce project standards (thin routes, business logic in lib/, Result<T> returns, outer try/catch, tests for new modules)
+- **Implementer escalation**: Subagents can report DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, or BLOCKED -- blocked steps get re-dispatched with more context or a more capable model before escalating to user
+- **Validation gates**: Tests, TypeScript, lint run after each step before reviews begin
+- **Severity tagging**: [minor] concerns auto-resolve after 3 rounds; [critical] always escalate to user
 - **Secret filtering**: `.env`, credentials, and secrets are never sent to Codex
 - **Stash safety**: Dirty working trees are stashed and restored with conflict handling
 - **Final approval gate**: All commits stay local until user explicitly approves the push
@@ -165,21 +170,34 @@ Plan: plans/my-feature.md (locked)
 Baseline: abc1234
 Steps: 3 identified
 
+1. Add database migration (opus)
+2. Create lib module (opus)
+3. Update button styles (sonnet)
+
 Executing all steps continuously...
 
-Step 1 of 3: Add database migration
+Step 1 of 3: Add database migration (model: opus)
+  Implementer: DONE
   Validation: tests pass | tsc pass
+  Spec review: SPEC_COMPLIANT
+  Quality review: QUALITY_APPROVED
   Codex review: STEP APPROVED
   Step 1: COMPLETE [Approved]
 
-Step 2 of 3: Create lib module
+Step 2 of 3: Create lib module (model: opus)
+  Implementer: DONE_WITH_CONCERNS (noted large existing file)
   Validation: tests pass | tsc pass
-  Codex review: 1 concern raised
-    C1 [critical]: ACCEPTED — fixed missing null check
+  Spec review: SPEC_ISSUES -- missing error case
+    Fix subagent dispatched, re-review: SPEC_COMPLIANT
+  Quality review: QUALITY_APPROVED
+  Codex review: STEP APPROVED
   Step 2: COMPLETE [Approved with fixes]
 
-Step 3 of 3: Add API endpoint
+Step 3 of 3: Update button styles (model: sonnet)
+  Implementer: DONE
   Validation: tests pass | tsc pass
+  Spec review: SPEC_COMPLIANT
+  Quality review: QUALITY_APPROVED
   Codex review: STEP APPROVED
   Step 3: COMPLETE [Approved]
 
@@ -188,6 +206,7 @@ Verification: VERIFIED -- All changes align with the plan.
 ## Execution Complete -- Awaiting Approval
 
 **Steps**: 3/3 completed
+**Reviews**: 3 spec + 3 quality + 3 Codex + 1 verification
 **Verification**: VERIFIED
 
 Push these commits to remote? (y/n)
@@ -195,10 +214,10 @@ Push these commits to remote? (y/n)
 
 ## How It Works
 
-- **Claude** is the plan author, defender, and executor
-- **Codex** (gpt-5.4, xhigh reasoning) is the adversarial reviewer and implementation supervisor
-- Codex enforces both plan alignment and desloppify code quality standards
-- The goal isn't unanimous agreement at any cost — it's a genuinely better plan and correct implementation through honest debate
+- **Claude** is the plan author, defender, and orchestrator
+- **Claude subagents** (opus/sonnet) handle implementation and two-stage review (spec compliance + code quality) with fresh context per step
+- **Codex** (gpt-5.4, xhigh reasoning) is the adversarial reviewer providing final per-step and full-diff verification
+- The goal isn't unanimous agreement at any cost -- it's a genuinely better plan and correct implementation through honest debate and layered review
 
 ## License
 
