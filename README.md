@@ -9,29 +9,31 @@ Adversarial plan refinement and supervised execution for Claude Code. Uses Codex
 Automates the cycle of sending your plan to Codex for review, defending or updating it, and repeating until both models reach consensus.
 
 1. Reads your plan file
-2. Sends it to Codex with instructions to perform a critical review
+2. Sends it to Codex (gpt-5.4, xhigh reasoning) with instructions to perform a critical review
 3. Analyzes each piece of Codex's feedback — accepts what's valid, fights back on what's overkill or wrong
 4. Updates the plan and sends it back to Codex
-5. Repeats until both models agree (or max 20 rounds)
+5. Repeats until both models agree (or max 40 rounds)
 6. Presents a summary of what changed, what was defended, and any unresolved disagreements
 
 ### `/check-loop:execute` — Supervised Execution
 
-Executes an approved plan step-by-step with Codex reviewing each step against the locked plan. Designed to run after `/check-loop` has refined a plan, or on any plan you want to execute with review guardrails.
+Executes an approved plan continuously with Codex reviewing each step against the locked plan. Designed to run after `/check-loop` has refined a plan, or on any plan you want to execute with review guardrails.
 
 1. Locks the plan as read-only and captures a git baseline
-2. For each step: implements the code, runs validation gates (tests, TypeScript, lint), sends the diff to Codex for review
-3. User can steer between steps — deviations from the locked plan are tracked and passed to verification
-4. After all steps: a fresh Codex session verifies the full diff against the original plan
-5. Presents a summary of steps completed, fixes applied, and any unresolved disagreements
+2. Executes all steps continuously — no stopping between steps
+3. For each step: implements the code, runs validation gates (tests, TypeScript, lint), sends the diff to Codex for review
+4. Codex reviews against both the plan and desloppify code quality standards (thin routes, Result<T>, standardized errors, tests)
+5. After all steps: a fresh Codex session verifies the full diff against the original plan + desloppify standards
+6. Presents a complete summary and waits for user approval before pushing
 
 **Features:**
-- **Steering**: User can inject constraints between steps without restarting
+- **Continuous execution**: Runs through all steps without stopping — only pauses at the end for approval
+- **Desloppify enforcement**: Codex reviews code against project quality standards (thin routes, business logic in lib/, Result<T> returns, outer try/catch, tests for new modules)
 - **Validation gates**: Tests, TypeScript, lint run after each step before Codex review
-- **Severity tagging**: [minor] concerns auto-resolve after 3 rounds; [critical] always escalate to user
+- **Severity tagging**: [minor] concerns auto-resolve after 3 rounds; [critical] (including desloppify violations) always escalate to user
 - **Secret filtering**: `.env`, credentials, and secrets are never sent to Codex
-- **Watchdog**: 120s timeout on Codex calls with retry-then-ask-user fallback
 - **Stash safety**: Dirty working trees are stashed and restored with conflict handling
+- **Final approval gate**: All commits stay local until user explicitly approves the push
 
 ## Prerequisites
 
@@ -63,14 +65,12 @@ npx -y @openai/codex login status
 
 ### 3. Codex MCP Server
 
-If you already use [claude-co-commands](https://github.com/SnakeO/claude-co-commands), you're all set — skip this step.
-
-Otherwise, connect the Codex MCP server to Claude Code. Pick one method:
+Connect the Codex MCP server to Claude Code:
 
 **Option A: CLI (Recommended)**
 
 ```bash
-claude mcp add validate-plans-and-brainstorm-ideas -- npx -y @openai/codex mcp-server
+claude mcp add codex-cli -- npx -y codex-mcp-server
 ```
 
 **Option B: Manual config**
@@ -80,15 +80,15 @@ Add this to your `~/.claude.json`:
 ```json
 {
   "mcpServers": {
-    "validate-plans-and-brainstorm-ideas": {
+    "codex-cli": {
       "command": "npx",
-      "args": ["-y", "@openai/codex", "mcp-server"]
+      "args": ["-y", "codex-mcp-server"]
     }
   }
 }
 ```
 
-> **Note:** The server name must be exactly `validate-plans-and-brainstorm-ideas`. The skills reference this name when calling MCP tools.
+> **Note:** The server name must be `codex-cli`. The skills reference MCP tools as `mcp__codex-cli__codex`.
 
 ## Installation
 
@@ -151,7 +151,7 @@ Updating plan and sending back to Codex...
 Round 3: PLAN APPROVED — No remaining concerns.
 
 ## Refinement Complete
-**Rounds**: 3 of 20 max
+**Rounds**: 3 of 40 max
 **Status**: Consensus reached
 ...
 ```
@@ -159,46 +159,45 @@ Round 3: PLAN APPROVED — No remaining concerns.
 ### Example Output (Supervised Execution)
 
 ```
-═══ check-loop:execute ═══
+--- check-loop:execute ---
 
 Plan: plans/my-feature.md (locked)
 Baseline: abc1234
 Steps: 3 identified
 
+Executing all steps continuously...
+
 Step 1 of 3: Add database migration
-  Any steering? (Enter to skip)
-  Implementing...
-  Validation: tests ✓ | tsc ✓
+  Validation: tests pass | tsc pass
   Codex review: STEP APPROVED
-  ✓ Step 1 complete
+  Step 1: COMPLETE [Approved]
 
 Step 2 of 3: Create lib module
-  Any steering? (Enter to skip)
-  > User: "use the existing Result<T> pattern"
-  Implementing with steering applied...
-  Validation: tests ✓ | tsc ✓
+  Validation: tests pass | tsc pass
   Codex review: 1 concern raised
     C1 [critical]: ACCEPTED — fixed missing null check
-  ✓ Step 2 complete (1 fix applied)
+  Step 2: COMPLETE [Approved with fixes]
 
 Step 3 of 3: Add API endpoint
-  Any steering? (Enter to skip)
-  Implementing...
-  Validation: tests ✓ | tsc ✓
+  Validation: tests pass | tsc pass
   Codex review: STEP APPROVED
-  ✓ Step 3 complete
+  Step 3: COMPLETE [Approved]
 
-Verification: VERIFIED — All changes align with the plan.
+Verification: VERIFIED -- All changes align with the plan.
 
-## Execution Complete
+## Execution Complete -- Awaiting Approval
+
 **Steps**: 3/3 completed
-**Status**: VERIFIED
+**Verification**: VERIFIED
+
+Push these commits to remote? (y/n)
 ```
 
 ## How It Works
 
 - **Claude** is the plan author, defender, and executor
-- **Codex** is the adversarial reviewer (plan refinement) and implementation supervisor (execution)
+- **Codex** (gpt-5.4, xhigh reasoning) is the adversarial reviewer and implementation supervisor
+- Codex enforces both plan alignment and desloppify code quality standards
 - The goal isn't unanimous agreement at any cost — it's a genuinely better plan and correct implementation through honest debate
 
 ## License
