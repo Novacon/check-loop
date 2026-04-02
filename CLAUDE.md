@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A Claude Code plugin (`lordknows13-check-loop`) providing adversarial plan refinement and supervised plan execution skills powered by OpenAI's Codex App Server protocol. No compiled code, no build steps, no npm dependencies -- Node.js scripts and Markdown skill definitions.
+A Claude Code plugin (`lordknows13-check-loop`) providing adversarial plan refinement and supervised plan execution skills powered by the official OpenAI Codex App Server transport. No compiled code, no build steps, no npm dependencies.
 
 ## Architecture
 
@@ -11,7 +11,23 @@ A Claude Code plugin (`lordknows13-check-loop`) providing adversarial plan refin
 plugins/check-loop/
   plugin.json                     <- plugin definition (auto-discovers skills via glob)
   scripts/
-    codex-invoke.mjs              <- transport layer: JSON-RPC client to codex app-server
+    codex-invoke.mjs              <- CLI wrapper: turn, review, setup subcommands
+    app-server-broker.mjs         <- shared Codex app-server connection broker
+    lib/
+      app-server.mjs              <- JSON-RPC client (spawned + broker transports)
+      codex.mjs                   <- Codex interaction (review/start, turn/start, threads)
+      git.mjs                     <- git operations and review scope detection
+      args.mjs                    <- argument parsing
+      broker-endpoint.mjs         <- cross-platform socket endpoint config
+      broker-lifecycle.mjs        <- broker session management
+      process.mjs                 <- child process management
+      fs.mjs                      <- file system utilities
+      state.mjs                   <- persistent state management
+      workspace.mjs               <- workspace root resolution
+      render.mjs                  <- output formatting
+      job-control.mjs             <- job status management
+      tracked-jobs.mjs            <- job lifecycle tracking
+      prompts.mjs                 <- template loading
   skills/
     check-loop/SKILL.md           <- adversarial refinement loop (/check-loop)
     execute/SKILL.md              <- supervised execution with Codex oversight (/check-loop:execute)
@@ -22,7 +38,40 @@ plugins/check-loop/
 
 **Skill discovery:** `plugin.json` uses `"skills": ["./skills/*"]` -- any subdirectory with a `SKILL.md` is auto-registered.
 
-**SKILL.md format:** YAML frontmatter (`name`, `description`) followed by Markdown instructions that Claude Code follows when the skill is invoked.
+## Model Configuration
+
+Hardcoded in `codex-invoke.mjs`:
+- **Model**: `gpt-5.4-codex`
+- **Reasoning effort**: `xhigh`
+
+No `~/.codex/config.toml` overrides needed or used. Every Codex invocation uses these settings.
+
+## Transport Layer
+
+Uses the **official OpenAI Codex App Server protocol** (from `openai/codex-plugin-cc`):
+
+- **Broker connection sharing**: Reuses a single `codex app-server` process across calls via Unix sockets
+- **Direct fallback**: If broker is unavailable, spawns a direct subprocess
+- **Proper streaming**: Handles notifications, subagent turns, and completion detection
+- **Thread management**: start, resume, naming, listing via JSON-RPC
+
+### CLI Interface
+
+```bash
+# New thread (turn/start)
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn --cwd /path --prompt "text"
+
+# Continue thread (turn/start with resume)
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn --cwd /path --thread-id ID --prompt "text"
+
+# Native code review (review/start -- auto-detects git scope)
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" review --cwd /path [--scope auto|working-tree|branch] [--base REF]
+
+# Setup check
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" setup [--cwd /path]
+```
+
+Returns JSON: `{"threadId": "...", "response": "..."}`
 
 ## Skills
 
@@ -30,9 +79,9 @@ plugins/check-loop/
 
 Sequential adversarial loop for plan refinement:
 
-1. Send plan to Codex for review via `codex-invoke.mjs`
+1. Send plan to Codex for review via `turn` subcommand
 2. Analyze feedback -- accept valid points, fight back on overkill/incorrect ones
-3. Update plan, send back via `codex-invoke.mjs` continuing the same thread
+3. Update plan, send back via `turn` continuing the same thread
 4. Repeat until Codex responds with "PLAN APPROVED" or max rounds (40) reached
 
 ### execute (Supervised Execution)
@@ -40,31 +89,11 @@ Sequential adversarial loop for plan refinement:
 Continuous plan execution with Codex reviewing each step:
 
 1. Lock the plan as read-only, capture git baseline
-2. For each step: implement via subagent, run validation gates (tests/tsc/lint), send diff to Codex for review
+2. For each step: implement via subagent, run validation gates (tests/tsc/lint), send diff to Codex via `turn`
 3. Commits each step as it completes -- no stopping between steps
-4. After all steps: fresh Codex thread does full verification of all changes against original plan
+4. After all steps: uses `review` subcommand (native code review) or `turn` for full verification
 5. Presents complete summary and waits for user approval before pushing
 6. Severity-tagged concerns: [minor] auto-resolve after 3 rounds, [critical] always escalate to user
-
-## Codex Transport
-
-Uses the **Codex App Server protocol** -- a JSON-RPC connection over stdio to `codex app-server`:
-
-- `codex-invoke.mjs` -- start a new thread or continue via `--thread-id`
-- Model and reasoning effort come from `~/.codex/config.toml` (no hardcoded defaults)
-- Zero npm dependencies -- uses only Node.js builtins
-
-### Usage
-
-```bash
-# New thread
-node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn --cwd /path --prompt "text"
-
-# Continue thread
-node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn --cwd /path --thread-id ID --prompt "text"
-```
-
-Returns JSON: `{"threadId": "...", "response": "..."}`
 
 ## Versioning
 
@@ -74,4 +103,4 @@ Version must be updated in three places and kept in sync:
 2. `.claude-plugin/marketplace.json` -> `plugins[0].version`
 3. `plugins/check-loop/plugin.json` -> `version`
 
-Current version: **2.0.0**
+Current version: **3.0.0**

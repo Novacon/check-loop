@@ -1,285 +1,232 @@
 #!/usr/bin/env node
 
 /**
- * codex-invoke.mjs -- Thin CLI wrapper around the Codex App Server protocol.
+ * codex-invoke.mjs -- CLI wrapper around Codex App Server protocol.
  *
- * Usage:
- *   node codex-invoke.mjs turn --prompt "..."                    # new thread
- *   node codex-invoke.mjs turn --thread-id <id> --prompt "..."   # continue thread
- *   node codex-invoke.mjs turn --prompt "..." --cwd /path        # set working dir
+ * Uses the official OpenAI transport layer (broker + direct fallback, proper
+ * streaming, notification handling). Hardcodes gpt-5.4-codex with xhigh
+ * reasoning for all operations.
  *
- * Output: JSON to stdout with { threadId, response }
- * Model and reasoning effort come from ~/.codex/config.toml (no params needed).
+ * Subcommands:
+ *
+ *   turn   --prompt "..." [--thread-id ID] [--cwd PATH] [--sandbox MODE]
+ *          Start or continue a Codex conversation.
+ *          Output: JSON { threadId, response }
+ *
+ *   review [--scope auto|working-tree|branch] [--base REF] [--cwd PATH]
+ *          Run a native Codex code review against local git state.
+ *          Output: JSON { threadId, response }
+ *
+ *   setup  [--cwd PATH]
+ *          Check Codex CLI readiness (installed, authenticated).
+ *          Output: human-readable status report
  */
 
-import { spawn } from "node:child_process";
-import readline from "node:readline";
+import path from "node:path";
 import process from "node:process";
 
+import { parseArgs } from "./lib/args.mjs";
+import {
+  getCodexAvailability,
+  getCodexLoginStatus,
+  getSessionRuntimeStatus,
+  runAppServerReview,
+  runAppServerTurn,
+} from "./lib/codex.mjs";
+import { resolveReviewTarget } from "./lib/git.mjs";
+import { resolveWorkspaceRoot } from "./lib/workspace.mjs";
+
 // ---------------------------------------------------------------------------
-// JSON-RPC client over stdio to `codex app-server`
+// Hardcoded model configuration -- gpt-5.4-codex with xhigh reasoning always
 // ---------------------------------------------------------------------------
 
-class AppServerClient {
-  constructor() {
-    this.pending = new Map();
-    this.nextId = 1;
-    this.closed = false;
-    this.notificationHandler = null;
-    this.proc = null;
-    this.exitPromise = null;
-  }
+const MODEL = "gpt-5.4-codex";
+const EFFORT = "xhigh";
 
-  async connect(cwd) {
-    this.proc = spawn("codex", ["app-server"], {
-      cwd,
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-    });
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-    this.proc.stdout.setEncoding("utf8");
-    this.proc.stderr.setEncoding("utf8");
+function resolveCwd(options) {
+  return options.cwd ? path.resolve(process.cwd(), options.cwd) : process.cwd();
+}
 
-    // Collect stderr for diagnostics
-    this.stderr = "";
-    this.proc.stderr.on("data", (chunk) => {
-      this.stderr += chunk;
-    });
-
-    this.exitPromise = new Promise((resolve) => {
-      this.proc.on("exit", (code, signal) => {
-        this.closed = true;
-        // Reject all pending requests
-        for (const p of this.pending.values()) {
-          p.reject(new Error(`codex app-server exited (${signal ?? `code ${code}`})`));
-        }
-        this.pending.clear();
-        resolve();
-      });
-      this.proc.on("error", (err) => {
-        this.closed = true;
-        for (const p of this.pending.values()) {
-          p.reject(err);
-        }
-        this.pending.clear();
-        resolve();
-      });
-    });
-
-    const rl = readline.createInterface({ input: this.proc.stdout });
-    rl.on("line", (line) => this._handleLine(line));
-
-    // Initialize handshake
-    await this.request("initialize", {
-      clientInfo: {
-        title: "check-loop",
-        name: "Claude Code",
-        version: "2.0.0",
-      },
-      capabilities: {
-        experimentalApi: false,
-        optOutNotificationMethods: [
-          "item/agentMessage/delta",
-          "item/reasoning/summaryTextDelta",
-          "item/reasoning/summaryPartAdded",
-          "item/reasoning/textDelta",
-        ],
-      },
-    });
-    this.notify("initialized", {});
-  }
-
-  request(method, params) {
-    if (this.closed) throw new Error("Client is closed");
-    const id = this.nextId++;
-    return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      this._send({ id, method, params });
-    });
-  }
-
-  notify(method, params = {}) {
-    if (!this.closed) this._send({ method, params });
-  }
-
-  async close() {
-    if (this.closed) return;
-    this.closed = true;
-    if (this.proc && !this.proc.killed) {
-      this.proc.stdin.end();
-      setTimeout(() => {
-        if (this.proc && !this.proc.killed && this.proc.exitCode === null) {
-          this.proc.kill("SIGTERM");
-        }
-      }, 100).unref?.();
-    }
-    await this.exitPromise;
-  }
-
-  _send(msg) {
-    this.proc?.stdin?.write(JSON.stringify(msg) + "\n");
-  }
-
-  _handleLine(line) {
-    if (!line.trim()) return;
-    let msg;
-    try {
-      msg = JSON.parse(line);
-    } catch {
-      return;
-    }
-
-    // Response to our request
-    if (msg.id !== undefined && !msg.method) {
-      const p = this.pending.get(msg.id);
-      if (!p) return;
-      this.pending.delete(msg.id);
-      if (msg.error) {
-        p.reject(new Error(msg.error.message ?? "RPC error"));
-      } else {
-        p.resolve(msg.result ?? {});
-      }
-      return;
-    }
-
-    // Server-initiated request (respond with unsupported)
-    if (msg.id !== undefined && msg.method) {
-      this._send({
-        id: msg.id,
-        error: { code: -32601, message: `Unsupported: ${msg.method}` },
-      });
-      return;
-    }
-
-    // Notification
-    if (msg.method && this.notificationHandler) {
-      this.notificationHandler(msg);
-    }
-  }
+function fail(message) {
+  process.stderr.write(`${message}\n`);
+  process.exit(1);
 }
 
 // ---------------------------------------------------------------------------
-// Turn capture -- collects the full response from streaming notifications
+// turn -- start or continue a Codex conversation
 // ---------------------------------------------------------------------------
 
-function captureTurn(client) {
-  return new Promise((resolve, reject) => {
-    const agentMessages = []; // full text from item/completed agentMessage items
-    let turnCompleted = false;
-
-    client.notificationHandler = (msg) => {
-      const method = msg.method;
-      const params = msg.params ?? {};
-
-      // Capture completed agent messages (contains full text)
-      if (method === "item/completed" && params.item?.type === "agentMessage") {
-        const text = params.item.text ?? "";
-        if (text) agentMessages.push(text);
-      }
-
-      if (method === "turn/completed") {
-        turnCompleted = true;
-        resolve(agentMessages.join("\n\n"));
-      }
-
-      if (method === "error") {
-        reject(new Error(params.message ?? "Codex error"));
-      }
-    };
-
-    // Safety timeout -- 10 minutes
-    setTimeout(() => {
-      if (!turnCompleted) {
-        reject(new Error("Turn timed out after 10 minutes"));
-      }
-    }, 10 * 60 * 1000).unref?.();
+async function handleTurn(argv) {
+  const { options } = parseArgs(argv, {
+    valueOptions: ["prompt", "thread-id", "cwd", "sandbox"],
   });
-}
 
-// ---------------------------------------------------------------------------
-// CLI
-// ---------------------------------------------------------------------------
-
-function parseArgs(argv) {
-  const opts = {};
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === "--prompt" && i + 1 < argv.length) {
-      opts.prompt = argv[++i];
-    } else if (argv[i] === "--thread-id" && i + 1 < argv.length) {
-      opts.threadId = argv[++i];
-    } else if (argv[i] === "--cwd" && i + 1 < argv.length) {
-      opts.cwd = argv[++i];
-    } else if (argv[i] === "--sandbox" && i + 1 < argv.length) {
-      opts.sandbox = argv[++i];
-    } else if (argv[i] === "turn") {
-      opts.command = "turn";
-    }
+  if (!options.prompt) {
+    fail("Usage: node codex-invoke.mjs turn --prompt <text> [--thread-id <id>] [--cwd <path>] [--sandbox <mode>]");
   }
-  return opts;
+
+  const cwd = resolveCwd(options);
+  const workspaceRoot = resolveWorkspaceRoot(cwd);
+  const sandbox = options.sandbox ?? "read-only";
+
+  const result = await runAppServerTurn(workspaceRoot, {
+    resumeThreadId: options["thread-id"] ?? null,
+    prompt: options.prompt,
+    model: MODEL,
+    effort: EFFORT,
+    sandbox,
+    persistThread: true,
+    onProgress: (event) => {
+      const msg = typeof event === "string" ? event : event?.message;
+      if (msg) {
+        process.stderr.write(`[codex] ${msg}\n`);
+      }
+    },
+  });
+
+  const response = result.finalMessage ?? "";
+  process.stdout.write(`${JSON.stringify({ threadId: result.threadId, response })}\n`);
+
+  if (result.status !== 0) {
+    process.exitCode = 1;
+  }
 }
+
+// ---------------------------------------------------------------------------
+// review -- native Codex code review via review/start
+// ---------------------------------------------------------------------------
+
+async function handleReview(argv) {
+  const { options } = parseArgs(argv, {
+    valueOptions: ["scope", "base", "cwd"],
+  });
+
+  const cwd = resolveCwd(options);
+  const workspaceRoot = resolveWorkspaceRoot(cwd);
+
+  const target = resolveReviewTarget(cwd, {
+    base: options.base ?? null,
+    scope: options.scope ?? "auto",
+  });
+
+  // Build native review target for review/start
+  let nativeTarget;
+  if (target.mode === "working-tree") {
+    nativeTarget = { type: "uncommittedChanges" };
+  } else if (target.mode === "branch") {
+    nativeTarget = { type: "baseBranch", branch: target.baseRef };
+  } else {
+    fail(`Unsupported review target mode: ${target.mode}`);
+  }
+
+  const result = await runAppServerReview(workspaceRoot, {
+    target: nativeTarget,
+    model: MODEL,
+    onProgress: (event) => {
+      const msg = typeof event === "string" ? event : event?.message;
+      if (msg) {
+        process.stderr.write(`[codex] ${msg}\n`);
+      }
+    },
+  });
+
+  const response = result.reviewText ?? "";
+  process.stdout.write(`${JSON.stringify({ threadId: result.threadId, response })}\n`);
+
+  if (result.status !== 0) {
+    process.exitCode = 1;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// setup -- verify Codex CLI readiness
+// ---------------------------------------------------------------------------
+
+function handleSetup(argv) {
+  const { options } = parseArgs(argv, {
+    valueOptions: ["cwd"],
+  });
+
+  const cwd = resolveCwd(options);
+  const codexStatus = getCodexAvailability(cwd);
+  const authStatus = getCodexLoginStatus(cwd);
+  const runtimeStatus = getSessionRuntimeStatus();
+
+  const lines = [
+    "# Codex Setup (check-loop)",
+    "",
+    `Model: ${MODEL} (hardcoded)`,
+    `Reasoning effort: ${EFFORT} (hardcoded)`,
+    "",
+    "Checks:",
+    `- codex CLI: ${codexStatus.available ? "installed" : "NOT FOUND"} -- ${codexStatus.detail}`,
+    `- auth: ${authStatus.loggedIn ? "authenticated" : "NOT AUTHENTICATED"} -- ${authStatus.detail}`,
+    `- session runtime: ${runtimeStatus.label}`,
+    "",
+  ];
+
+  const nextSteps = [];
+  if (!codexStatus.available) {
+    nextSteps.push("Install Codex with `npm install -g @openai/codex`.");
+  }
+  if (codexStatus.available && !authStatus.loggedIn) {
+    nextSteps.push("Run `!codex login` to authenticate.");
+    nextSteps.push("If browser login is blocked, try `!codex login --device-auth` or `!codex login --with-api-key`.");
+  }
+
+  if (nextSteps.length > 0) {
+    lines.push("Next steps:");
+    for (const step of nextSteps) {
+      lines.push(`- ${step}`);
+    }
+  } else {
+    lines.push("Status: ready");
+  }
+
+  process.stdout.write(`${lines.join("\n").trimEnd()}\n`);
+}
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
 
 async function main() {
-  const opts = parseArgs(process.argv.slice(2));
+  const [subcommand, ...argv] = process.argv.slice(2);
 
-  if (opts.command !== "turn" || !opts.prompt) {
-    process.stderr.write(
-      "Usage: node codex-invoke.mjs turn --prompt <text> [--thread-id <id>] [--cwd <path>] [--sandbox <mode>]\n"
-    );
-    process.exit(1);
+  if (!subcommand || subcommand === "help" || subcommand === "--help") {
+    process.stdout.write([
+      "Usage:",
+      "  node codex-invoke.mjs turn --prompt <text> [--thread-id <id>] [--cwd <path>] [--sandbox <mode>]",
+      "  node codex-invoke.mjs review [--scope <auto|working-tree|branch>] [--base <ref>] [--cwd <path>]",
+      "  node codex-invoke.mjs setup [--cwd <path>]",
+      "",
+      `Model: ${MODEL} | Effort: ${EFFORT} (hardcoded)`,
+      "",
+    ].join("\n"));
+    return;
   }
 
-  const cwd = opts.cwd ?? process.cwd();
-  const client = new AppServerClient();
-
-  try {
-    await client.connect(cwd);
-
-    let threadId = opts.threadId;
-
-    // Start a new thread or resume an existing one
-    if (threadId) {
-      const resumeResult = await client.request("thread/resume", {
-        threadId,
-      });
-      threadId = resumeResult.thread?.id ?? threadId;
-    } else {
-      const threadResult = await client.request("thread/start", {
-        instructions: null,
-      });
-      threadId = threadResult.thread?.id ?? threadResult.threadId;
-      if (!threadId) {
-        throw new Error(
-          "thread/start did not return a thread ID. Result: " +
-            JSON.stringify(threadResult).slice(0, 200)
-        );
-      }
-    }
-
-    // Set up turn capture before starting the turn
-    const responsePromise = captureTurn(client);
-
-    // Start the turn
-    await client.request("turn/start", {
-      threadId,
-      input: [{ type: "text", text: opts.prompt }],
-    });
-
-    // Wait for the full response
-    const response = await responsePromise;
-
-    // Output result as JSON
-    process.stdout.write(
-      JSON.stringify({ threadId, response }) + "\n"
-    );
-  } catch (err) {
-    process.stderr.write(`Error: ${err.message}\n`);
-    if (client.stderr) {
-      process.stderr.write(`Codex stderr: ${client.stderr}\n`);
-    }
-    process.exit(1);
-  } finally {
-    await client.close();
+  switch (subcommand) {
+    case "turn":
+      await handleTurn(argv);
+      break;
+    case "review":
+      await handleReview(argv);
+      break;
+    case "setup":
+      handleSetup(argv);
+      break;
+    default:
+      fail(`Unknown subcommand: ${subcommand}. Use: turn, review, setup`);
   }
 }
 
-main();
+main().catch((error) => {
+  const message = error instanceof Error ? error.message : String(error);
+  process.stderr.write(`Error: ${message}\n`);
+  process.exitCode = 1;
+});

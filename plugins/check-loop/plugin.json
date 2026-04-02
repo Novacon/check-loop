@@ -1,7 +1,7 @@
 {
   "name": "check-loop",
-  "version": "2.0.0",
-  "description": "Adversarial plan refinement loop — Codex reviews, Claude defends/updates, repeat until consensus",
+  "version": "3.0.0",
+  "description": "Adversarial plan refinement loop + supervised execution -- powered by official OpenAI Codex transport (gpt-5.4-codex, xhigh reasoning)",
   "author": {
     "name": "lordknows13"
   },

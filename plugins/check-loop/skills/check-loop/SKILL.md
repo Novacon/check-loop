@@ -18,9 +18,9 @@ Automates iterative plan refinement between Claude (plan author/defender) and Co
 
 ## Codex Transport
 
-This skill invokes Codex via the **App Server protocol** -- a JSON-RPC connection to `codex app-server` over stdio. The transport script lives at `${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs`.
+This skill invokes Codex via the **App Server protocol** using the official OpenAI transport layer (shared broker connection, proper streaming, notification handling). The transport script lives at `${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs`.
 
-**Model and reasoning effort come from `~/.codex/config.toml` automatically.** Do not pass model or effort parameters -- the user's config is the source of truth.
+**Model is hardcoded to `gpt-5.4-codex` with `xhigh` reasoning effort.** No configuration needed.
 
 ### How to call Codex
 
@@ -34,12 +34,12 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn --cwd "$(pwd)" --prom
 node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn --cwd "$(pwd)" --thread-id THREAD_ID --prompt "YOUR PROMPT HERE"
 ```
 
-**Output format** (JSON on stdout):
+**Output format** (JSON on stdout, progress on stderr):
 ```json
 {"threadId": "...", "response": "..."}
 ```
 
-Parse the JSON output to extract `threadId` (save for subsequent rounds) and `response` (Codex's review text).
+Parse the JSON output to extract `threadId` (save for subsequent rounds) and `response` (Codex's review text). Progress messages appear on stderr prefixed with `[codex]`.
 
 ## Step 1: Read the Plan and Gather Context
 

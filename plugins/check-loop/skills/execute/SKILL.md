@@ -20,13 +20,13 @@ Executes an approved plan continuously. Dispatches a fresh implementer subagent 
 
 ## Codex Transport
 
-This skill invokes Codex via the **App Server protocol** -- a JSON-RPC connection to `codex app-server` over stdio. The transport script lives at `${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs`.
+This skill invokes Codex via the **App Server protocol** using the official OpenAI transport layer (shared broker connection, proper streaming, notification handling). The transport script lives at `${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs`.
 
-**Model and reasoning effort come from `~/.codex/config.toml` automatically.** Do not pass model or effort parameters -- the user's config is the source of truth.
+**Model is hardcoded to `gpt-5.4-codex` with `xhigh` reasoning effort.** No configuration needed.
 
 ### How to call Codex
 
-**New thread** (first call -- returns `threadId` and `response`):
+**New thread / turn** (returns `threadId` and `response`):
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn --cwd "$(pwd)" --prompt "YOUR PROMPT HERE"
 ```
@@ -36,12 +36,22 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn --cwd "$(pwd)" --prom
 node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn --cwd "$(pwd)" --thread-id THREAD_ID --prompt "YOUR PROMPT HERE"
 ```
 
-**Output format** (JSON on stdout):
+**Native code review** (uses Codex's built-in `review/start` -- auto-detects git scope):
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" review --cwd "$(pwd)" [--scope auto|working-tree|branch] [--base REF]
+```
+
+**Output format** (JSON on stdout, progress on stderr):
 ```json
 {"threadId": "...", "response": "..."}
 ```
 
-Parse the JSON output to extract `threadId` (save for subsequent calls within the same session) and `response` (Codex's review text).
+Parse the JSON output to extract `threadId` (save for subsequent calls within the same session) and `response` (Codex's review text). Progress messages appear on stderr prefixed with `[codex]`.
+
+### When to use `turn` vs `review`
+
+- **`turn`**: For sending prompts with plan context, step diffs, or custom review instructions. Used for step-by-step Codex reviews during execution.
+- **`review`**: For the final full-diff verification (Step 5). Uses Codex's native code review which auto-collects git context efficiently. Preferred when reviewing actual code changes rather than sending a custom prompt.
 
 ## Shell Command Policy
 
@@ -350,8 +360,17 @@ git diff {BASELINE_COMMIT}..HEAD
 
 Apply the same secret-filtering rules as step diffs.
 
-### 5b. Start Fresh Codex Session
+### 5b. Start Fresh Codex Verification
 
+You have TWO options for final verification. **Prefer Option A** (native review) when the plan context is not critical for the review. **Use Option B** when you need Codex to evaluate changes against the original plan.
+
+**Option A -- Native code review** (recommended for pure code quality verification):
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" review --cwd "$(pwd)" --scope working-tree
+```
+This uses Codex's built-in `review/start` which auto-collects all git context efficiently. Parse the JSON output for `threadId` and `response`.
+
+**Option B -- Custom verification prompt** (when plan alignment matters):
 Call codex-invoke.mjs via Bash to start a **new thread** (do NOT reuse the step-review thread):
 
 ```bash

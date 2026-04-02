@@ -1,6 +1,15 @@
+```
+      _               _    _
+  ___| |__   ___  ___| | _| | ___   ___  _ __
+ / __| '_ \ / _ \/ __| |/ / |/ _ \ / _ \| '_ \
+| (__| | | |  __/ (__|   <| | (_) | (_) | |_) |
+ \___|_| |_|\___|\___|_|\_\_|\___/ \___/| .__/
+                                        |_|
+```
+
 # claude-check-loop
 
-Adversarial plan refinement and supervised execution for Claude Code. Uses Codex as a real-time reviewer to battle-test plans and oversee implementation.
+Adversarial plan refinement and supervised execution for Claude Code. Uses OpenAI Codex (gpt-5.4-codex, xhigh reasoning) as a real-time reviewer to battle-test plans and oversee implementation.
 
 ## Skills
 
@@ -9,7 +18,7 @@ Adversarial plan refinement and supervised execution for Claude Code. Uses Codex
 Automates the cycle of sending your plan to Codex for review, defending or updating it, and repeating until both models reach consensus.
 
 1. Reads your plan file
-2. Sends it to Codex via the App Server protocol (model and reasoning effort from your `~/.codex/config.toml`)
+2. Sends it to Codex via the official App Server transport (broker connection sharing, proper streaming)
 3. Analyzes each piece of Codex's feedback -- accepts what's valid, fights back on what's overkill or wrong
 4. Updates the plan and sends it back to Codex
 5. Repeats until both models agree (or max 40 rounds)
@@ -25,12 +34,15 @@ Executes an approved plan continuously using fresh subagents per step, with thre
 4. Dispatches a spec compliance reviewer subagent to verify the implementation matches requirements -- nothing more, nothing less
 5. Dispatches a code quality reviewer subagent to check desloppify standards and general quality
 6. Sends the diff to Codex for final review against the plan
-7. After all steps: a fresh Codex thread verifies the full diff against the original plan
+7. After all steps: native Codex code review or custom verification prompt verifies the full diff
 8. Presents a complete summary and waits for user approval before pushing
 
 **Features:**
+- **Official OpenAI transport**: Uses the same transport layer as the official Codex plugin -- broker connection sharing, streaming notifications, proper thread management
+- **Hardcoded model**: gpt-5.4-codex with xhigh reasoning on every call -- no config drift
 - **Subagent implementation**: Fresh implementer subagent per step with isolated context -- no confusion from prior steps, no context pollution
 - **Three review layers**: Spec compliance (subagent) -> code quality (subagent) -> Codex (external). Each catches different classes of issues.
+- **Native code review**: Final verification can use Codex's built-in `review/start` which auto-collects git context efficiently
 - **Continuous execution**: Runs through all steps without stopping -- only pauses at the end for approval
 - **Desloppify enforcement**: Code quality reviewer and Codex both enforce project standards (thin routes, business logic in lib/, Result<T> returns, outer try/catch, tests for new modules)
 - **Implementer escalation**: Subagents can report DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, or BLOCKED -- blocked steps get re-dispatched with more context or a more capable model before escalating to user
@@ -45,7 +57,7 @@ Executes an approved plan continuously using fresh subagents per step, with thre
 
 ### 1. Node.js
 
-The transport script requires Node.js v18+.
+The transport layer requires Node.js v18+.
 
 ### 2. Codex CLI
 
@@ -64,23 +76,17 @@ For headless/remote machines (no browser):
 codex login --device-auth
 ```
 
-To verify you're logged in:
+To verify everything is ready:
 
-```bash
-codex login status
+```
+/check-loop:setup
 ```
 
-### 3. Configure Model (Optional)
-
-The plugin reads model and reasoning effort from your Codex config. To set your preferred model:
+Or from the command line:
 
 ```bash
-# Edit ~/.codex/config.toml
-model = "gpt-5.4"
-model_reasoning_effort = "xhigh"
+node scripts/codex-invoke.mjs setup
 ```
-
-If not configured, Codex uses its own defaults.
 
 ## Installation
 
@@ -205,22 +211,38 @@ Push these commits to remote? (y/n)
 ```
 plugins/check-loop/
   scripts/
-    codex-invoke.mjs        # Transport: JSON-RPC client to codex app-server
+    codex-invoke.mjs              # CLI: turn, review, setup subcommands
+    app-server-broker.mjs         # Shared Codex app-server connection broker
+    lib/
+      app-server.mjs              # JSON-RPC client (broker + direct transports)
+      codex.mjs                   # Codex interaction (review/start, turn/start)
+      git.mjs                     # Git operations and review scope detection
+      broker-lifecycle.mjs        # Broker session management
+      broker-endpoint.mjs         # Cross-platform socket config
+      args.mjs                    # Argument parsing
+      process.mjs                 # Child process management
+      fs.mjs                      # File system utilities
+      state.mjs                   # Persistent state management
+      workspace.mjs               # Workspace root resolution
+      render.mjs                  # Output formatting
+      job-control.mjs             # Job status management
+      tracked-jobs.mjs            # Job lifecycle tracking
+      prompts.mjs                 # Template loading
   skills/
-    check-loop/SKILL.md     # Adversarial refinement loop
-    execute/SKILL.md         # Supervised execution with Codex oversight
+    check-loop/SKILL.md           # Adversarial refinement loop
+    execute/SKILL.md              # Supervised execution with Codex oversight
     execute/implementer-prompt.md
     execute/spec-reviewer-prompt.md
     execute/code-quality-reviewer-prompt.md
 ```
 
-The transport layer (`codex-invoke.mjs`) speaks the Codex App Server protocol -- JSON-RPC over stdio to `codex app-server`. No MCP server, no npm dependencies at runtime. Model and reasoning effort come from `~/.codex/config.toml`.
+The transport layer uses the official OpenAI Codex App Server protocol -- JSON-RPC over stdio with broker connection sharing. No MCP server, no npm dependencies at runtime. Model (gpt-5.4-codex) and reasoning effort (xhigh) are hardcoded.
 
 ## How It Works
 
 - **Claude** is the plan author, defender, and orchestrator
 - **Claude subagents** (opus/sonnet) handle implementation and two-stage review (spec compliance + code quality) with fresh context per step
-- **Codex** is the adversarial reviewer providing final per-step and full-diff verification
+- **Codex** (gpt-5.4-codex, xhigh) is the adversarial reviewer providing final per-step and full-diff verification
 - The goal isn't unanimous agreement at any cost -- it's a genuinely better plan and correct implementation through honest debate and layered review
 
 ## License
