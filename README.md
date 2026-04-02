@@ -4,18 +4,18 @@ Adversarial plan refinement and supervised execution for Claude Code. Uses Codex
 
 ## Skills
 
-### `/check-loop` — Plan Refinement
+### `/check-loop` -- Plan Refinement
 
 Automates the cycle of sending your plan to Codex for review, defending or updating it, and repeating until both models reach consensus.
 
 1. Reads your plan file
-2. Sends it to Codex (gpt-5.4, xhigh reasoning) with instructions to perform a critical review
-3. Analyzes each piece of Codex's feedback — accepts what's valid, fights back on what's overkill or wrong
+2. Sends it to Codex via the App Server protocol (model and reasoning effort from your `~/.codex/config.toml`)
+3. Analyzes each piece of Codex's feedback -- accepts what's valid, fights back on what's overkill or wrong
 4. Updates the plan and sends it back to Codex
 5. Repeats until both models agree (or max 40 rounds)
 6. Presents a summary of what changed, what was defended, and any unresolved disagreements
 
-### `/check-loop:execute` — Supervised Execution with Subagent Implementation
+### `/check-loop:execute` -- Supervised Execution with Subagent Implementation
 
 Executes an approved plan continuously using fresh subagents per step, with three review layers before committing. Designed to run after `/check-loop` has refined a plan, or on any plan you want to execute with review guardrails.
 
@@ -24,8 +24,8 @@ Executes an approved plan continuously using fresh subagents per step, with thre
 3. Runs validation gates (tests, TypeScript, lint) on the subagent's work
 4. Dispatches a spec compliance reviewer subagent to verify the implementation matches requirements -- nothing more, nothing less
 5. Dispatches a code quality reviewer subagent to check desloppify standards and general quality
-6. Sends the diff to Codex (gpt-5.4, xhigh reasoning) for final review against the plan
-7. After all steps: a fresh Codex session verifies the full diff against the original plan
+6. Sends the diff to Codex for final review against the plan
+7. After all steps: a fresh Codex thread verifies the full diff against the original plan
 8. Presents a complete summary and waits for user approval before pushing
 
 **Features:**
@@ -39,61 +39,48 @@ Executes an approved plan continuously using fresh subagents per step, with thre
 - **Secret filtering**: `.env`, credentials, and secrets are never sent to Codex
 - **Stash safety**: Dirty working trees are stashed and restored with conflict handling
 - **Final approval gate**: All commits stay local until user explicitly approves the push
+- **Superpowers-aware**: Automatically ignores superpowers framework directives in plans so Codex reviews only the actual implementation steps
 
 ## Prerequisites
 
 ### 1. Node.js
 
-The Codex MCP server runs via `npx`, so you need Node.js installed (v18+).
+The transport script requires Node.js v18+.
 
-### 2. Codex CLI Login
+### 2. Codex CLI
 
-Authenticate with your OpenAI account (no API key required):
+Install and authenticate with the Codex CLI:
 
 ```bash
-npx -y @openai/codex login
+npm install -g @openai/codex
+codex login
 ```
 
-This opens your browser — sign in to your OpenAI/ChatGPT account and authorize. Your session is stored locally at `~/.codex/auth.json` and the MCP server picks it up automatically.
+This opens your browser -- sign in to your OpenAI/ChatGPT account and authorize. Your session is stored locally at `~/.codex/auth.json`.
 
 For headless/remote machines (no browser):
 
 ```bash
-npx -y @openai/codex login --device-auth
+codex login --device-auth
 ```
 
 To verify you're logged in:
 
 ```bash
-npx -y @openai/codex login status
+codex login status
 ```
 
-### 3. Codex MCP Server
+### 3. Configure Model (Optional)
 
-Connect the Codex MCP server to Claude Code:
-
-**Option A: CLI (Recommended)**
+The plugin reads model and reasoning effort from your Codex config. To set your preferred model:
 
 ```bash
-claude mcp add codex-cli -- npx -y codex-mcp-server
+# Edit ~/.codex/config.toml
+model = "gpt-5.4"
+model_reasoning_effort = "xhigh"
 ```
 
-**Option B: Manual config**
-
-Add this to your `~/.claude.json`:
-
-```json
-{
-  "mcpServers": {
-    "codex-cli": {
-      "command": "npx",
-      "args": ["-y", "codex-mcp-server"]
-    }
-  }
-}
-```
-
-> **Note:** The server name must be `codex-cli`. The skills reference MCP tools as `mcp__codex-cli__codex`.
+If not configured, Codex uses its own defaults.
 
 ## Installation
 
@@ -109,11 +96,12 @@ Add this to your `~/.claude.json`:
 ```bash
 git clone https://github.com/lordknows13/claude-check-loop.git
 cp -r claude-check-loop/plugins/check-loop/skills/* ~/.claude/skills/
+cp -r claude-check-loop/plugins/check-loop/scripts/* ~/.claude/scripts/
 ```
 
 ### Option 3: Manual
 
-Copy the contents of `plugins/check-loop/skills/` into `~/.claude/skills/`.
+Copy the contents of `plugins/check-loop/skills/` and `plugins/check-loop/scripts/` into your Claude Code config.
 
 ## Usage
 
@@ -123,7 +111,7 @@ Copy the contents of `plugins/check-loop/skills/` into `~/.claude/skills/`.
 /check-loop path/to/your/plan.md
 ```
 
-Or just `/check-loop` if you have an active plan in your session — it will try to auto-detect it.
+Or just `/check-loop` if you have an active plan in your session -- it will try to auto-detect it.
 
 ### Supervised Execution
 
@@ -153,7 +141,7 @@ Round 2: Codex raised 1 new concern, accepted pushback on F2.
   - Accepted: 1 (F5)
 Updating plan and sending back to Codex...
 
-Round 3: PLAN APPROVED — No remaining concerns.
+Round 3: PLAN APPROVED -- No remaining concerns.
 
 ## Refinement Complete
 **Rounds**: 3 of 40 max
@@ -212,11 +200,27 @@ Verification: VERIFIED -- All changes align with the plan.
 Push these commits to remote? (y/n)
 ```
 
+## Architecture
+
+```
+plugins/check-loop/
+  scripts/
+    codex-invoke.mjs        # Transport: JSON-RPC client to codex app-server
+  skills/
+    check-loop/SKILL.md     # Adversarial refinement loop
+    execute/SKILL.md         # Supervised execution with Codex oversight
+    execute/implementer-prompt.md
+    execute/spec-reviewer-prompt.md
+    execute/code-quality-reviewer-prompt.md
+```
+
+The transport layer (`codex-invoke.mjs`) speaks the Codex App Server protocol -- JSON-RPC over stdio to `codex app-server`. No MCP server, no npm dependencies at runtime. Model and reasoning effort come from `~/.codex/config.toml`.
+
 ## How It Works
 
 - **Claude** is the plan author, defender, and orchestrator
 - **Claude subagents** (opus/sonnet) handle implementation and two-stage review (spec compliance + code quality) with fresh context per step
-- **Codex** (gpt-5.4, xhigh reasoning) is the adversarial reviewer providing final per-step and full-diff verification
+- **Codex** is the adversarial reviewer providing final per-step and full-diff verification
 - The goal isn't unanimous agreement at any cost -- it's a genuinely better plan and correct implementation through honest debate and layered review
 
 ## License
