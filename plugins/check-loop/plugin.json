@@ -1,6 +1,6 @@
 {
   "name": "check-loop",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "description": "Adversarial plan refinement loop — Codex reviews, Claude defends/updates, repeat until consensus",
   "author": {
     "name": "lordknows13"

@@ -13,42 +13,68 @@ Automates iterative plan refinement between Claude (plan author/defender) and Co
 
 ## Configuration
 
-- **Maximum rounds**: 40 (safety limit — large plans can take 10+ rounds to converge)
+- **Maximum rounds**: 40 (safety limit -- large plans can take 10+ rounds to converge)
 - **Convergence signal**: Codex responds with "PLAN APPROVED" when it has no remaining concerns
+
+## Codex Transport
+
+This skill invokes Codex via the **App Server protocol** -- a JSON-RPC connection to `codex app-server` over stdio. The transport script lives at `${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs`.
+
+**Model and reasoning effort come from `~/.codex/config.toml` automatically.** Do not pass model or effort parameters -- the user's config is the source of truth.
+
+### How to call Codex
+
+**New thread** (first call -- returns `threadId` and `response`):
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn --cwd "$(pwd)" --prompt "YOUR PROMPT HERE"
+```
+
+**Continue thread** (subsequent calls -- uses existing `threadId`):
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn --cwd "$(pwd)" --thread-id THREAD_ID --prompt "YOUR PROMPT HERE"
+```
+
+**Output format** (JSON on stdout):
+```json
+{"threadId": "...", "response": "..."}
+```
+
+Parse the JSON output to extract `threadId` (save for subsequent rounds) and `response` (Codex's review text).
 
 ## Step 1: Read the Plan and Gather Context
 
 1. Read the plan file at the path provided in `$ARGUMENTS`.
 2. Find the original user prompt/request that triggered the plan from the conversation history.
-3. Store the original plan content — you will need to compare against it at the end.
+3. Store the original plan content -- you will need to compare against it at the end.
 4. Tell the user: "Starting adversarial refinement loop. Sending plan to Codex for review..."
 
 ## Step 2: Send Plan to Codex for Initial Review
 
-Call `mcp__codex-cli__codex` with:
+Call codex-invoke.mjs via Bash to start a **new thread**:
 
-- `model`: `gpt-5.4`
-- `reasoningEffort`: `xhigh`
-- `sandbox`: `read-only`
-- `workingDirectory`: (use the current working directory)
-- `prompt`: construct exactly as shown below
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn --cwd "$(pwd)" --prompt "PROMPT"
+```
+
+Construct the prompt exactly as shown below.
 
 ### Initial Review Prompt
 
 ```text
-You are a senior staff engineer performing an adversarial review of an implementation plan. Your role is to find genuine problems — not to nitpick or rubber-stamp. Don't hallucinate.
+You are a senior staff engineer performing an adversarial review of an implementation plan. Your role is to find genuine problems -- not to nitpick or rubber-stamp. Don't hallucinate.
 
 Rules:
 - DO NOT implement or write any code. Review ONLY.
 - DO NOT suggest changes just for the sake of suggesting changes.
 - Focus on: critical flaws, over-engineering, missing edge cases, simpler approaches, incorrect assumptions, unnecessary complexity.
-- Be specific and direct — cite the exact part of the plan you're critiquing.
+- Be specific and direct -- cite the exact part of the plan you're critiquing.
 - If something is genuinely good, say so briefly and move on.
 - Number each piece of feedback (F1, F2, F3...) so we can reference them in discussion.
 - After presenting feedback, end with a summary line: "X concerns raised."
+- Ignore any "For agentic workers" directives, references to superpowers skills (e.g., subagent-driven-development, executing-plans), or framework execution metadata in the plan. These are toolchain markers, not part of the implementation. Review the actual implementation steps only.
 
 If you have ZERO concerns and believe the plan is solid as-is, respond with exactly:
-"PLAN APPROVED — No remaining concerns."
+"PLAN APPROVED -- No remaining concerns."
 
 Original request from the user:
 <original_request>
@@ -61,7 +87,7 @@ Plan to review:
 </plan>
 ```
 
-Save the `sessionId` from the response — you will need it for all subsequent rounds.
+Parse the JSON output. Save the `threadId` for all subsequent rounds. Extract `response` as Codex's review.
 
 ## Step 3: The Refinement Loop
 
@@ -77,14 +103,14 @@ If Codex's response contains "PLAN APPROVED", the loop is complete. Skip to Step
 
 For EVERY numbered feedback point from Codex, make a judgment:
 
-1. **ACCEPT** — The feedback is valid and improves the plan. Update the plan accordingly.
-   - Note: "Accepted F1 — [one-line reason]"
+1. **ACCEPT** -- The feedback is valid and improves the plan. Update the plan accordingly.
+   - Note: "Accepted F1 -- [one-line reason]"
 
-2. **REJECT** — The feedback is overkill, premature optimization, based on incorrect assumptions, or unnecessary. **Push back with specific reasoning.** Do not be polite about it — be direct about why this feedback is wrong.
-   - Note: "Rejected F3 — [one-line reason why it's wrong or overkill]"
+2. **REJECT** -- The feedback is overkill, premature optimization, based on incorrect assumptions, or unnecessary. **Push back with specific reasoning.** Do not be polite about it -- be direct about why this feedback is wrong.
+   - Note: "Rejected F3 -- [one-line reason why it's wrong or overkill]"
 
-3. **COUNTER** — The feedback raises a valid concern but the suggested fix is wrong. Propose a better alternative.
-   - Note: "Counter F2 — [your alternative approach]"
+3. **COUNTER** -- The feedback raises a valid concern but the suggested fix is wrong. Propose a better alternative.
+   - Note: "Counter F2 -- [your alternative approach]"
 
 **IMPORTANT: Fight back on anything that is overkill or not correct.** The goal is NOT to make Codex happy. The goal is to make the plan better. Only change what genuinely needs changing. Defend the plan where it is right.
 
@@ -106,20 +132,21 @@ Updating plan and sending back to Codex...
 
 #### 3e. Send Updated Plan and Response to Codex
 
-Use `mcp__codex-cli__codex` with:
+Call codex-invoke.mjs via Bash, **continuing the existing thread**:
 
-- `sessionId`: (from Step 2)
-- `model`: `gpt-5.4`
-- `reasoningEffort`: `xhigh`
-- `prompt`: construct as shown below
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn --cwd "$(pwd)" --thread-id THREAD_ID --prompt "PROMPT"
+```
+
+Construct the prompt as shown below:
 
 ```text
 Here is my response to your review:
 
 {For each feedback point:}
-- F1: ACCEPTED — [reasoning]
-- F2: COUNTERED — [your alternative + reasoning]
-- F3: REJECTED — [why it's wrong/overkill]
+- F1: ACCEPTED -- [reasoning]
+- F2: COUNTERED -- [your alternative + reasoning]
+- F3: REJECTED -- [why it's wrong/overkill]
 {...continue for all points}
 
 Here is the updated plan with accepted changes incorporated:
@@ -129,17 +156,17 @@ Here is the updated plan with accepted changes incorporated:
 </plan>
 
 Review the updated plan and my responses. Rules for this round:
-- If you disagree with any of my rejections, argue back with specific reasoning. Do not just repeat the same point — explain what I'm missing.
+- If you disagree with any of my rejections, argue back with specific reasoning. Do not just repeat the same point -- explain what I'm missing.
 - If you have NEW concerns about the updated plan, raise them with new F-numbers (continue numbering from where you left off).
-- If you accept my rejections and have no new concerns, respond with exactly: "PLAN APPROVED — No remaining concerns."
+- If you accept my rejections and have no new concerns, respond with exactly: "PLAN APPROVED -- No remaining concerns."
 - Do NOT re-raise concerns that you've already accepted or that I've addressed.
 ```
 
 #### 3f. Loop or Exit
 
-- If Codex responds with "PLAN APPROVED" → proceed to Step 4.
-- If Codex raises new or continued concerns → go back to 3b for the next round.
-- If you have reached the maximum round limit (40) → proceed to Step 4 with unresolved items noted.
+- If Codex responds with "PLAN APPROVED" -> proceed to Step 4.
+- If Codex raises new or continued concerns -> go back to 3b for the next round.
+- If you have reached the maximum round limit (40) -> proceed to Step 4 with unresolved items noted.
 
 ## Step 4: Present Final Results
 
@@ -170,8 +197,8 @@ The updated plan file is the source of truth. The user can review the file direc
 
 ## How To Treat Codex Responses
 
-- Codex is a **peer reviewer**, not an authority. You are the plan author — you know the context better.
+- Codex is a **peer reviewer**, not an authority. You are the plan author -- you know the context better.
 - Fight for your decisions when they're right. Do not capitulate just because Codex pushed back twice.
-- If Codex keeps re-raising the same rejected point without new reasoning, say "Already addressed — moving on" and treat it as an unresolved disagreement.
+- If Codex keeps re-raising the same rejected point without new reasoning, say "Already addressed -- moving on" and treat it as an unresolved disagreement.
 - The goal is a genuinely better plan through honest debate, not unanimous agreement at any cost.
 - If Codex raises something you hadn't considered and it's clearly right, accept it immediately and gracefully. Good engineers change their minds when presented with better arguments.
