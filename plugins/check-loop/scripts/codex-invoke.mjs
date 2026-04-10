@@ -4,7 +4,7 @@
  * codex-invoke.mjs -- CLI wrapper around Codex App Server protocol.
  *
  * Uses the official OpenAI transport layer (broker + direct fallback, proper
- * streaming, notification handling). Hardcodes gpt-5.4-codex with xhigh
+ * streaming, notification handling). Uses Codex CLI OAuth session with xhigh
  * reasoning for all operations.
  *
  * Subcommands:
@@ -37,10 +37,10 @@ import { resolveReviewTarget } from "./lib/git.mjs";
 import { resolveWorkspaceRoot } from "./lib/workspace.mjs";
 
 // ---------------------------------------------------------------------------
-// Hardcoded model configuration -- gpt-5.4-codex with xhigh reasoning always
+// Model configuration -- null = use Codex CLI default, xhigh reasoning always
 // ---------------------------------------------------------------------------
 
-const MODEL = "gpt-5.4-codex";
+const MODEL = null;
 const EFFORT = "xhigh";
 
 // ---------------------------------------------------------------------------
@@ -159,8 +159,8 @@ function handleSetup(argv) {
   const lines = [
     "# Codex Setup (check-loop)",
     "",
-    `Model: ${MODEL} (hardcoded)`,
-    `Reasoning effort: ${EFFORT} (hardcoded)`,
+    `Model: ${MODEL ?? "(CLI default)"}`,
+    `Reasoning effort: ${EFFORT}`,
     "",
     "Checks:",
     `- codex CLI: ${codexStatus.available ? "installed" : "NOT FOUND"} -- ${codexStatus.detail}`,
@@ -204,7 +204,7 @@ async function main() {
       "  node codex-invoke.mjs review [--scope <auto|working-tree|branch>] [--base <ref>] [--cwd <path>]",
       "  node codex-invoke.mjs setup [--cwd <path>]",
       "",
-      `Model: ${MODEL} | Effort: ${EFFORT} (hardcoded)`,
+      `Model: ${MODEL ?? "(CLI default)"} | Effort: ${EFFORT}`,
       "",
     ].join("\n"));
     return;

@@ -1,15 +1,14 @@
 ```
-      _               _    _
-  ___| |__   ___  ___| | _| | ___   ___  _ __
- / __| '_ \ / _ \/ __| |/ / |/ _ \ / _ \| '_ \
-| (__| | | |  __/ (__|   <| | (_) | (_) | |_) |
- \___|_| |_|\___|\___|_|\_\_|\___/ \___/| .__/
-                                        |_|
+ ▄███▄   ██   ██  ██████   ▄███▄   ██  ▄█  ██       ▄███▄    ▄███▄   █████▄
+██   ▀▀  ██   ██  ██      ██   ▀▀  ██▄█▀   ██      ██   ██  ██   ██  ██  ▐██
+██       ███████  █████   ██       ████    ██      ██   ██  ██   ██  █████▀
+██   ▄▄  ██   ██  ██      ██   ▄▄  ██▀█▄   ██      ██   ██  ██   ██  ██
+ ▀███▀   ██   ██  ██████   ▀███▀   ██  ▀█  ██████   ▀███▀    ▀███▀   ██
 ```
 
 # claude-check-loop
 
-Adversarial plan refinement and supervised execution for Claude Code. Uses OpenAI Codex (gpt-5.4-codex, xhigh reasoning) as a real-time reviewer to battle-test plans and oversee implementation.
+Adversarial plan refinement and supervised execution for Claude Code. Uses OpenAI Codex CLI (xhigh reasoning) as a real-time reviewer to battle-test plans and oversee implementation.
 
 ## Skills
 
@@ -39,7 +38,7 @@ Executes an approved plan continuously using fresh subagents per step, with thre
 
 **Features:**
 - **Official OpenAI transport**: Uses the same transport layer as the official Codex plugin -- broker connection sharing, streaming notifications, proper thread management
-- **Hardcoded model**: gpt-5.4-codex with xhigh reasoning on every call -- no config drift
+- **Codex CLI auth**: Uses your Codex CLI session directly -- no API keys, no config drift
 - **Subagent implementation**: Fresh implementer subagent per step with isolated context -- no confusion from prior steps, no context pollution
 - **Three review layers**: Spec compliance (subagent) -> code quality (subagent) -> Codex (external). Each catches different classes of issues.
 - **Native code review**: Final verification can use Codex's built-in `review/start` which auto-collects git context efficiently
@@ -236,13 +235,13 @@ plugins/check-loop/
     execute/code-quality-reviewer-prompt.md
 ```
 
-The transport layer uses the official OpenAI Codex App Server protocol -- JSON-RPC over stdio with broker connection sharing. No MCP server, no npm dependencies at runtime. Model (gpt-5.4-codex) and reasoning effort (xhigh) are hardcoded.
+The transport layer uses the official OpenAI Codex App Server protocol -- JSON-RPC over stdio with broker connection sharing. No MCP server, no npm dependencies at runtime. Uses your Codex CLI session directly with xhigh reasoning effort.
 
 ## How It Works
 
 - **Claude** is the plan author, defender, and orchestrator
 - **Claude subagents** (opus/sonnet) handle implementation and two-stage review (spec compliance + code quality) with fresh context per step
-- **Codex** (gpt-5.4-codex, xhigh) is the adversarial reviewer providing final per-step and full-diff verification
+- **Codex** (xhigh reasoning) is the adversarial reviewer providing final per-step and full-diff verification
 - The goal isn't unanimous agreement at any cost -- it's a genuinely better plan and correct implementation through honest debate and layered review
 
 ## License

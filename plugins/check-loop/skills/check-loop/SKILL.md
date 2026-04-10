@@ -20,7 +20,7 @@ Automates iterative plan refinement between Claude (plan author/defender) and Co
 
 This skill invokes Codex via the **App Server protocol** using the official OpenAI transport layer (shared broker connection, proper streaming, notification handling). The transport script lives at `${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs`.
 
-**Model is hardcoded to `gpt-5.4-codex` with `xhigh` reasoning effort.** No configuration needed.
+**Uses your Codex CLI session (OAuth) with `xhigh` reasoning effort.** No API keys or model config needed.
 
 ### How to call Codex
 

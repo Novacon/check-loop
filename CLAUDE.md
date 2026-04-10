@@ -40,11 +40,11 @@ plugins/check-loop/
 
 ## Model Configuration
 
-Hardcoded in `codex-invoke.mjs`:
-- **Model**: `gpt-5.4-codex`
+Set in `codex-invoke.mjs`:
+- **Model**: `null` (uses Codex CLI default -- whatever model your session is configured for)
 - **Reasoning effort**: `xhigh`
 
-No `~/.codex/config.toml` overrides needed or used. Every Codex invocation uses these settings.
+No API keys needed. Authentication is handled by the Codex CLI OAuth session (`codex login`).
 
 ## Transport Layer
 
@@ -103,4 +103,4 @@ Version must be updated in three places and kept in sync:
 2. `.claude-plugin/marketplace.json` -> `plugins[0].version`
 3. `plugins/check-loop/plugin.json` -> `version`
 
-Current version: **3.0.0**
+Current version: **3.1.0**
