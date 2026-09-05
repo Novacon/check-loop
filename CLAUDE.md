@@ -1,106 +1,107 @@
 # CLAUDE.md
 
-## What This Is
+## Repository
 
-A Claude Code plugin (`lordknows13-check-loop`) providing adversarial plan refinement and supervised plan execution skills powered by the official OpenAI Codex App Server transport. No compiled code, no build steps, no npm dependencies.
+Claude Code plugin `lordknows13-check-loop`. It provides adversarial plan refinement and supervised execution over the official Codex App Server transport. No compiled code or runtime npm dependencies.
 
 ## Architecture
 
-```
-.claude-plugin/marketplace.json   <- marketplace registration
+```text
+.claude-plugin/marketplace.json
 plugins/check-loop/
-  plugin.json                     <- plugin definition (auto-discovers skills via glob)
+  plugin.json
   scripts/
-    codex-invoke.mjs              <- CLI wrapper: turn, review, setup subcommands
-    app-server-broker.mjs         <- shared Codex app-server connection broker
+    codex-invoke.mjs
+    app-server-broker.mjs
     lib/
-      app-server.mjs              <- JSON-RPC client (spawned + broker transports)
-      codex.mjs                   <- Codex interaction (review/start, turn/start, threads)
-      git.mjs                     <- git operations and review scope detection
-      args.mjs                    <- argument parsing
-      broker-endpoint.mjs         <- cross-platform socket endpoint config
-      broker-lifecycle.mjs        <- broker session management
-      process.mjs                 <- child process management
-      fs.mjs                      <- file system utilities
-      state.mjs                   <- persistent state management
-      workspace.mjs               <- workspace root resolution
-      render.mjs                  <- output formatting
-      job-control.mjs             <- job status management
-      tracked-jobs.mjs            <- job lifecycle tracking
-      prompts.mjs                 <- template loading
   skills/
-    check-loop/SKILL.md           <- adversarial refinement loop (/check-loop)
-    execute/SKILL.md              <- supervised execution with Codex oversight (/check-loop:execute)
-    execute/implementer-prompt.md <- subagent prompt template for implementers
-    execute/spec-reviewer-prompt.md <- subagent prompt template for spec review
-    execute/code-quality-reviewer-prompt.md <- subagent prompt template for quality review
+    check-loop/SKILL.md
+    execute/SKILL.md
+    execute/implementer-prompt.md
 ```
 
-**Skill discovery:** `plugin.json` uses `"skills": ["./skills/*"]` -- any subdirectory with a `SKILL.md` is auto-registered.
+`plugin.json` discovers skills through `./skills/*`. Preserve the public skill names `check-loop` and `execute`.
 
-## Model Configuration
+## Model contract
 
-Set in `codex-invoke.mjs`:
-- **Model**: `null` (uses Codex CLI default -- whatever model your session is configured for)
-- **Reasoning effort**: `xhigh`
+- Fable at `xhigh` owns plan refinement, execution orchestration, repository validation, and review adjudication.
+- Fresh Opus subagents implement bounded steps and accepted fixes.
+- GPT-5.6 Sol at `xhigh` is the adversarial reviewer.
 
-No API keys needed. Authentication is handled by the Codex CLI OAuth session (`codex login`).
+`plugins/check-loop/scripts/codex-invoke.mjs` pins:
 
-## Transport Layer
-
-Uses the **official OpenAI Codex App Server protocol** (from `openai/codex-plugin-cc`):
-
-- **Broker connection sharing**: Reuses a single `codex app-server` process across calls via Unix sockets
-- **Direct fallback**: If broker is unavailable, spawns a direct subprocess
-- **Proper streaming**: Handles notifications, subagent turns, and completion detection
-- **Thread management**: start, resume, naming, listing via JSON-RPC
-
-### CLI Interface
-
-```bash
-# New thread (turn/start)
-node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn --cwd /path --prompt "text"
-
-# Continue thread (turn/start with resume)
-node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn --cwd /path --thread-id ID --prompt "text"
-
-# Native code review (review/start -- auto-detects git scope)
-node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" review --cwd /path [--scope auto|working-tree|branch] [--base REF]
-
-# Setup check
-node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" setup [--cwd /path]
+```text
+Model: gpt-5.6-sol
+Reasoning effort: xhigh
 ```
 
-Returns JSON: `{"threadId": "...", "response": "..."}`
+Every Sol path is read-only. `turn/start` receives `model` and `effort`; native `review/start` inherits both from its `thread/start` configuration.
+
+## Review policy
+
+Every concern must contain a severity, evidence status, claim, exact evidence, impact, failure condition, and recommended correction.
+
+Evidence statuses:
+
+- `VERIFIED`: the cited source directly supports the claim.
+- `INFERENCE`: cited facts support an unreproduced conclusion.
+- `UNVERIFIED`: evidence is missing or inaccessible.
+
+Only independently checked `VERIFIED` critical or important findings may block. Fable records `ACCEPT`, `REJECT`, or `COUNTER`. Reviewer agreement, confidence, severity, and repetition are not evidence.
 
 ## Skills
 
-### check-loop (Plan Refinement)
+### `check-loop`
 
-Sequential adversarial loop for plan refinement:
+Fable owns the plan and debates GPT-5.6 Sol in one persistent thread. Fable independently checks cited plan text, repository locations, and command output before changing the plan. Refinement ends when Sol approves, no verified blocker remains after adjudication, or 40 rounds complete.
 
-1. Send plan to Codex for review via `turn` subcommand
-2. Analyze feedback -- accept valid points, fight back on overkill/incorrect ones
-3. Update plan, send back via `turn` continuing the same thread
-4. Repeat until Codex responds with "PLAN APPROVED" or max rounds (40) reached
+### `execute`
 
-### execute (Supervised Execution)
+1. Fable locks the approved plan and records the working-tree state.
+2. Existing changes require worktree isolation or explicit user inclusion.
+3. A fresh Opus subagent implements one bounded step without staging or committing.
+4. Fable inspects the changes and runs repository-native validation.
+5. Sol reviews the step-scoped, secret-filtered diff and observed validation.
+6. Fable independently verifies and adjudicates every finding.
+7. A fresh Opus fixer handles only accepted or countered blocking findings.
+8. Final repository verification and native Sol review run before user approval.
 
-Continuous plan execution with Codex reviewing each step:
+Never hide, discard, stage, commit, or push user work automatically. Commit and push require explicit user approval.
 
-1. Lock the plan as read-only, capture git baseline
-2. For each step: implement via subagent, run validation gates (tests/tsc/lint), send diff to Codex via `turn`
-3. Commits each step as it completes -- no stopping between steps
-4. After all steps: uses `review` subcommand (native code review) or `turn` for full verification
-5. Presents complete summary and waits for user approval before pushing
-6. Severity-tagged concerns: [minor] auto-resolve after 3 rounds, [critical] always escalate to user
+## Transport
+
+```bash
+# New review thread
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn --cwd /path --prompt "text"
+
+# Continue a review thread
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn --cwd /path --thread-id ID --prompt "text"
+
+# Native review
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" review --cwd /path [--scope auto|working-tree|branch] [--base REF]
+
+# Authentication and model preflight
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" setup [--cwd /path]
+```
+
+The transport uses JSON-RPC over the Codex App Server protocol, broker reuse with direct fallback, streaming notifications, and the local Codex OAuth session.
+
+## Validation
+
+```bash
+node --test tests/orchestration-contract.test.mjs
+claude plugin validate ./plugins/check-loop
+claude plugin validate ./.claude-plugin/marketplace.json
+```
+
+Also syntax-check changed `.mjs` files and run `git diff --check`.
 
 ## Versioning
 
-Version must be updated in three places and kept in sync:
+Keep these values synchronized:
 
-1. `.claude-plugin/marketplace.json` -> `metadata.version`
-2. `.claude-plugin/marketplace.json` -> `plugins[0].version`
-3. `plugins/check-loop/plugin.json` -> `version`
+1. `.claude-plugin/marketplace.json` → `metadata.version`
+2. `.claude-plugin/marketplace.json` → `plugins[0].version`
+3. `plugins/check-loop/plugin.json` → `version`
 
-Current version: **3.1.0**
+Current version: **4.0.0**

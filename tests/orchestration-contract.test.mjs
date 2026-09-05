@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { buildThreadParams } from "../plugins/check-loop/scripts/lib/codex.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = (path) => readFileSync(join(ROOT, path), "utf8");
@@ -23,6 +24,42 @@ test("transport pins GPT-5.6 Sol at xhigh", () => {
   );
   assert.match(output, /Model: gpt-5\.6-sol \| Effort: xhigh/);
   assert.doesNotMatch(output, /CLI default/);
+});
+
+test("native review pins xhigh and all reviewer turns are read-only", () => {
+  assert.deepEqual(
+    buildThreadParams(ROOT, {
+      model: "gpt-5.6-sol",
+      effort: "xhigh",
+      sandbox: "read-only",
+    }),
+    {
+      cwd: ROOT,
+      model: "gpt-5.6-sol",
+      approvalPolicy: "never",
+      sandbox: "read-only",
+      serviceName: "claude_code_codex_plugin",
+      ephemeral: true,
+      experimentalRawEvents: false,
+      config: { model_reasoning_effort: "xhigh" },
+    },
+  );
+
+  const invoke = read("plugins/check-loop/scripts/codex-invoke.mjs");
+  assert.match(
+    invoke,
+    /runAppServerReview\(workspaceRoot, \{[\s\S]*?effort: EFFORT,/,
+  );
+  assert.match(
+    invoke,
+    /runAppServerTurn\(workspaceRoot, \{[\s\S]*?sandbox: "read-only",/,
+  );
+  const help = execFileSync(
+    process.execPath,
+    [join(ROOT, "plugins/check-loop/scripts/codex-invoke.mjs"), "help"],
+    { encoding: "utf8" },
+  );
+  assert.doesNotMatch(help, /--sandbox/);
 });
 
 test("plugin and marketplace publish version 4.0.0", () => {
@@ -136,4 +173,12 @@ test("README documents the version four orchestration contract", () => {
   assert.doesNotMatch(body, /three review layers/i);
   assert.doesNotMatch(body, /\bsonnet\b/i);
   assert.doesNotMatch(body, /stash safety|spec review|quality review|desloppify/i);
+});
+
+test("repository guidance matches version four", () => {
+  const body = read("CLAUDE.md");
+  assert.match(body, /Fable.*Opus.*GPT-5\.6 Sol/is);
+  assert.match(body, /Current version: \*\*4\.0\.0\*\*/);
+  assert.doesNotMatch(body, /spec-reviewer-prompt|code-quality-reviewer-prompt/);
+  assert.doesNotMatch(body, /CLI default|commits each step/i);
 });

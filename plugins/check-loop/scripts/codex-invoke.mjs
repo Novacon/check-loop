@@ -62,23 +62,22 @@ function fail(message) {
 
 async function handleTurn(argv) {
   const { options } = parseArgs(argv, {
-    valueOptions: ["prompt", "thread-id", "cwd", "sandbox"],
+    valueOptions: ["prompt", "thread-id", "cwd"],
   });
 
   if (!options.prompt) {
-    fail("Usage: node codex-invoke.mjs turn --prompt <text> [--thread-id <id>] [--cwd <path>] [--sandbox <mode>]");
+    fail("Usage: node codex-invoke.mjs turn --prompt <text> [--thread-id <id>] [--cwd <path>]");
   }
 
   const cwd = resolveCwd(options);
   const workspaceRoot = resolveWorkspaceRoot(cwd);
-  const sandbox = options.sandbox ?? "read-only";
 
   const result = await runAppServerTurn(workspaceRoot, {
     resumeThreadId: options["thread-id"] ?? null,
     prompt: options.prompt,
     model: MODEL,
     effort: EFFORT,
-    sandbox,
+    sandbox: "read-only",
     persistThread: true,
     onProgress: (event) => {
       const msg = typeof event === "string" ? event : event?.message;
@@ -126,6 +125,7 @@ async function handleReview(argv) {
   const result = await runAppServerReview(workspaceRoot, {
     target: nativeTarget,
     model: MODEL,
+    effort: EFFORT,
     onProgress: (event) => {
       const msg = typeof event === "string" ? event : event?.message;
       if (msg) {
@@ -200,7 +200,7 @@ async function main() {
   if (!subcommand || subcommand === "help" || subcommand === "--help") {
     process.stdout.write([
       "Usage:",
-      "  node codex-invoke.mjs turn --prompt <text> [--thread-id <id>] [--cwd <path>] [--sandbox <mode>]",
+      "  node codex-invoke.mjs turn --prompt <text> [--thread-id <id>] [--cwd <path>]",
       "  node codex-invoke.mjs review [--scope <auto|working-tree|branch>] [--base <ref>] [--cwd <path>]",
       "  node codex-invoke.mjs setup [--cwd <path>]",
       "",

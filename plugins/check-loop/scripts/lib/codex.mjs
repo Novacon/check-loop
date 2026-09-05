@@ -53,7 +53,7 @@ function cleanCodexStderr(stderr) {
 }
 
 /** @returns {ThreadStartParams} */
-function buildThreadParams(cwd, options = {}) {
+export function buildThreadParams(cwd, options = {}) {
   return {
     cwd,
     model: options.model ?? null,
@@ -61,7 +61,10 @@ function buildThreadParams(cwd, options = {}) {
     sandbox: options.sandbox ?? "read-only",
     serviceName: SERVICE_NAME,
     ephemeral: options.ephemeral ?? true,
-    experimentalRawEvents: false
+    experimentalRawEvents: false,
+    ...(options.effort
+      ? { config: { model_reasoning_effort: options.effort } }
+      : {})
   };
 }
 
@@ -780,6 +783,7 @@ export async function runAppServerReview(cwd, options = {}) {
     emitProgress(options.onProgress, "Starting Codex review thread.", "starting");
     const thread = await startThread(client, cwd, {
       model: options.model,
+      effort: options.effort,
       sandbox: "read-only",
       ephemeral: true,
       threadName: options.threadName
