@@ -50,3 +50,55 @@ test("plan refinement is owned by Fable against Sol", () => {
   assert.match(body, /independently verify/i);
   assert.doesNotMatch(body, /Codex CLI default/);
 });
+
+test("execution uses Fable, Opus implementers, and Sol review only", () => {
+  const path = "plugins/check-loop/skills/execute/SKILL.md";
+  const yaml = frontmatter(path);
+  const body = read(path);
+  assert.match(yaml, /^model: fable$/m);
+  assert.match(yaml, /^effort: xhigh$/m);
+  assert.match(body, /model: "opus"/);
+  assert.match(body, /GPT-5\.6 Sol/);
+  assert.match(body, /STEP APPROVED/);
+  assert.doesNotMatch(body, /model: "sonnet"/);
+  assert.doesNotMatch(body, /spec-reviewer-prompt/);
+  assert.doesNotMatch(body, /code-quality-reviewer-prompt/);
+  assert.doesNotMatch(body, /git stash/);
+  assert.doesNotMatch(body, /git add -A/);
+  assert.doesNotMatch(body, /safeStripeRedirect|NextResponse|Supabase|Result<T>/);
+  assert.match(body, /VERIFIED \| INFERENCE \| UNVERIFIED/);
+  assert.match(body, /Only VERIFIED.*may block/is);
+  assert.match(body, /independently verify/i);
+});
+
+test("implementer is Opus-only and leaves git ownership to Fable", () => {
+  const body = read("plugins/check-loop/skills/execute/implementer-prompt.md");
+  assert.match(body, /model: "opus"/);
+  assert.match(body, /repository instructions/i);
+  assert.match(body, /do not stage or commit/i);
+  assert.doesNotMatch(
+    body,
+    /sonnet|safeStripeRedirect|NextResponse|Supabase|Result<T>/i,
+  );
+});
+
+test("legacy Opus reviewer prompts are removed", () => {
+  assert.equal(
+    existsSync(
+      join(
+        ROOT,
+        "plugins/check-loop/skills/execute/spec-reviewer-prompt.md",
+      ),
+    ),
+    false,
+  );
+  assert.equal(
+    existsSync(
+      join(
+        ROOT,
+        "plugins/check-loop/skills/execute/code-quality-reviewer-prompt.md",
+      ),
+    ),
+    false,
+  );
+});
