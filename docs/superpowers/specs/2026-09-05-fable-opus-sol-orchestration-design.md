@@ -41,8 +41,8 @@ If an account or organization does not allow one of these models, stop with the 
 5. Require numbered concerns using the evidence contract or the exact `PLAN APPROVED` signal.
 6. Have Fable independently verify every blocking claim, then classify it as `ACCEPT`, `REJECT`, or `COUNTER`.
 7. Update the plan only for accepted, verified changes. Explain rejected and countered findings to Sol.
-8. Continue the same Sol thread until approval or the round limit.
-9. Report meaningful plan changes, successfully defended decisions, and unresolved disagreements.
+8. Continue the same Sol thread until approval, no independently verified critical or important concern remains, or the round limit.
+9. At the limit, ask the user to resolve any remaining verified blocker; otherwise report meaningful plan changes, successfully defended decisions, and unresolved nonblocking questions.
 
 The plan file remains the output and source of truth. This skill does not implement code.
 
@@ -160,11 +160,11 @@ Before release:
 1. Validate all JSON manifests and version equality.
 2. Run `node --check` over every JavaScript module.
 3. Run the transport setup command and verify it reports `gpt-5.6-sol` with `xhigh`.
-4. Verify both skills declare `model: fable` and `effort: xhigh`.
+4. Verify all three skills declare `model: fable` and `effort: xhigh`.
 5. Verify every implementer/fixer dispatch specifies `model: "opus"` and no Sonnet implementation path remains.
 6. Verify removed reviewer files have no references.
-7. Verify both Sol prompt contracts require the complete evidence format and prohibit unsupported blocking findings.
-8. Run the plugin locally with `claude --plugin-dir` and confirm both skills are discovered.
+7. Verify all three Sol prompt contracts require the complete evidence format and prohibit unsupported blocking findings.
+8. Run the plugin locally with `claude --plugin-dir` and confirm all three skills are discovered.
 9. Exercise a disposable plan through plan review to confirm Sol thread creation, continuation, evidence handling, and approval parsing.
 10. Exercise one disposable implementation step to confirm the Opus dispatch contract, validation handoff, evidence-gated Sol review, and user approval gate.
 11. Exercise a disposable research request and confirm it produces one cited Markdown report without implementation work.

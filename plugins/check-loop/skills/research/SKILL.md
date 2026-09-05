@@ -107,7 +107,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn \
   --prompt "PROMPT"
 ```
 
-Before sending any report or follow-up to Sol, inspect it and redact secret or credential values. Omit contents from `*.env*`, `*.secret*`, `*credentials*`, `**/secrets/**`, ignored environment files, binary payloads, and dependency caches. Name an omitted path only when Sol needs the omission context; never include its content.
+Before sending any research request, report, or follow-up to Sol, inspect it and redact secret or credential values. Omit contents from `*.env*`, `*.secret*`, `*credentials*`, `**/secrets/**`, ignored environment files, binary payloads, and dependency caches. Name an omitted path only when Sol needs the omission context; never include its content.
 
 ### Initial Sol prompt
 

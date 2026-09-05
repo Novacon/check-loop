@@ -673,7 +673,7 @@ async function withAppServer(cwd, fn) {
 
 async function startThread(client, cwd, options = {}) {
   const response = await client.request("thread/start", buildThreadParams(cwd, options));
-  assertEffectiveThreadSettings(response.thread, options);
+  assertEffectiveThreadSettings(response, options);
   const threadId = response.thread.id;
   if (options.threadName) {
     await client.request("thread/name/set", { threadId, name: options.threadName });
@@ -683,7 +683,7 @@ async function startThread(client, cwd, options = {}) {
 
 async function resumeThread(client, threadId, cwd, options = {}) {
   const response = await client.request("thread/resume", buildResumeParams(threadId, cwd, options));
-  assertEffectiveThreadSettings(response.thread, options);
+  assertEffectiveThreadSettings(response, options);
   return response;
 }
 

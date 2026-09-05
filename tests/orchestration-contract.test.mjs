@@ -98,6 +98,12 @@ test("unexpected Sol model rerouting fails closed", () => {
       ),
     /Unexpected effective model/,
   );
+  const transport = read("plugins/check-loop/scripts/lib/codex.mjs");
+  assert.match(transport, /assertEffectiveThreadSettings\(response, options\)/);
+  assert.doesNotMatch(
+    transport,
+    /assertEffectiveThreadSettings\(response\.thread, options\)/,
+  );
 });
 
 test("plugin and marketplace publish version 4.0.0", () => {
@@ -176,6 +182,10 @@ test("every Sol payload excludes secret content", () => {
   ]) {
     assert.match(read(path), /Before (?:sending|each).*Sol[\s\S]*?redact/is);
   }
+  assert.match(
+    read("plugins/check-loop/skills/research/SKILL.md"),
+    /research request, report, or follow-up/i,
+  );
 
   const execute = read("plugins/check-loop/skills/execute/SKILL.md");
   assert.doesNotMatch(execute, /review \\\n[\s\S]*?--scope working-tree/);
