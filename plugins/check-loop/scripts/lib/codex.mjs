@@ -54,6 +54,14 @@ function cleanCodexStderr(stderr) {
 
 /** @returns {ThreadStartParams} */
 export function buildThreadParams(cwd, options = {}) {
+  const config = {};
+  if (options.effort) {
+    config.model_reasoning_effort = options.effort;
+  }
+  if (options.reviewModel) {
+    config.review_model = options.reviewModel;
+  }
+
   return {
     cwd,
     model: options.model ?? null,
@@ -62,9 +70,7 @@ export function buildThreadParams(cwd, options = {}) {
     serviceName: SERVICE_NAME,
     ephemeral: options.ephemeral ?? true,
     experimentalRawEvents: false,
-    ...(options.effort
-      ? { config: { model_reasoning_effort: options.effort } }
-      : {})
+    ...(Object.keys(config).length > 0 ? { config } : {})
   };
 }
 
@@ -784,6 +790,7 @@ export async function runAppServerReview(cwd, options = {}) {
     const thread = await startThread(client, cwd, {
       model: options.model,
       effort: options.effort,
+      reviewModel: options.model,
       sandbox: "read-only",
       ephemeral: true,
       threadName: options.threadName

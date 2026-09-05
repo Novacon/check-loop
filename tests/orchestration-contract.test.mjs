@@ -32,6 +32,7 @@ test("native review pins xhigh and all reviewer turns are read-only", () => {
       model: "gpt-5.6-sol",
       effort: "xhigh",
       sandbox: "read-only",
+      reviewModel: "gpt-5.6-sol",
     }),
     {
       cwd: ROOT,
@@ -41,7 +42,10 @@ test("native review pins xhigh and all reviewer turns are read-only", () => {
       serviceName: "claude_code_codex_plugin",
       ephemeral: true,
       experimentalRawEvents: false,
-      config: { model_reasoning_effort: "xhigh" },
+      config: {
+        model_reasoning_effort: "xhigh",
+        review_model: "gpt-5.6-sol",
+      },
     },
   );
 
