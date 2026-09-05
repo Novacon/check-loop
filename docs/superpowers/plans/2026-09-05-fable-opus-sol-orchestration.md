@@ -652,3 +652,35 @@ for `check-loop@lordknows13-check-loop`, and that its `installPath` ends in `/ch
 - [ ] **Step 5: Reload and verify the installed plugin**
 
 Run `/reload-plugins` in Claude Code or start a fresh session. Invoke the installed plugin's setup/preflight path and confirm it reports Fable orchestration, Opus implementation, and `gpt-5.6-sol` review at `xhigh`.
+
+### Addendum: Research peer-review skill
+
+Added before publishing 4.0.0 in response to the user's expanded scope.
+
+**Files:**
+- Create: `plugins/check-loop/skills/research/SKILL.md`
+- Modify: `README.md`
+- Modify: `CLAUDE.md`
+- Modify: `plugins/check-loop/plugin.json`
+- Modify: `.claude-plugin/marketplace.json`
+- Modify: `tests/orchestration-contract.test.mjs`
+- Modify: `evals/evals.json`
+
+**Contract:**
+
+- Public command: `/check-loop:research [research-question]`.
+- Fable at `xhigh` performs the research and owns the Markdown report.
+- GPT-5.6 Sol at `xhigh` peer-reviews the complete report in one persistent read-only thread.
+- Every concern uses the evidence contract; Fable independently verifies source citations.
+- The loop stops on approval, no verified critical/important concern, or 40 rounds.
+- One final Markdown report is the only deliverable. No code, implementation plan, or implementation subagent.
+- Explicit output paths win. Otherwise use an existing repository research convention or `research/YYYY-MM-DD-<topic>.md`.
+
+**Verification:**
+
+1. Add failing contract tests for frontmatter, models, evidence rules, output requirements, and non-implementation boundaries.
+2. Implement the skill and update public and repository documentation.
+3. Add a hallucinated-source pressure case and run it against the current skill.
+4. Run the complete contract suite and Claude plugin validators.
+5. Run a live disposable research smoke that produces one cited Markdown file.
+6. Re-run Sol and independent review before asking for updated release approval.

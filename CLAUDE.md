@@ -16,15 +16,16 @@ plugins/check-loop/
     lib/
   skills/
     check-loop/SKILL.md
+    research/SKILL.md
     execute/SKILL.md
     execute/implementer-prompt.md
 ```
 
-`plugin.json` discovers skills through `./skills/*`. Preserve the public skill names `check-loop` and `execute`.
+`plugin.json` discovers skills through `./skills/*`. Preserve the public skill names `check-loop`, `research`, and `execute`.
 
 ## Model contract
 
-- Fable at `xhigh` owns plan refinement, execution orchestration, repository validation, and review adjudication.
+- Fable at `xhigh` owns plan refinement, research, execution orchestration, repository validation, and review adjudication.
 - Fresh Opus subagents implement bounded steps and accepted fixes.
 - GPT-5.6 Sol at `xhigh` is the adversarial reviewer.
 
@@ -54,6 +55,10 @@ Only independently checked `VERIFIED` critical or important findings may block. 
 ### `check-loop`
 
 Fable owns the plan and debates GPT-5.6 Sol in one persistent thread. Fable independently checks cited plan text, repository locations, and command output before changing the plan. Refinement ends when Sol approves, no verified blocker remains after adjudication, or 40 rounds complete.
+
+### `research`
+
+Fable researches the user's question and writes one Markdown report with current primary-source citations, explicit inferences, counterevidence, and unresolved gaps. GPT-5.6 Sol reviews the completed draft in one persistent thread. Fable independently checks every source before revising. The skill produces no code or implementation plan.
 
 ### `execute`
 

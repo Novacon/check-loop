@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "lordknows13-check-loop",
-  "description": "Fable-orchestrated plan refinement and execution with Opus implementers and GPT-5.6 Sol review",
+  "description": "Fable-orchestrated plan refinement, research peer review, and execution with Opus implementers and GPT-5.6 Sol review",
   "owner": {
     "name": "lordknows13"
   },
@@ -12,7 +12,7 @@
     {
       "name": "check-loop",
       "source": "./plugins/check-loop",
-      "description": "Fable-orchestrated plan refinement and supervised execution",
+      "description": "Fable-orchestrated plan refinement, research peer review, and supervised execution",
       "version": "4.0.0",
       "category": "development"
     }

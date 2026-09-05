@@ -166,6 +166,38 @@ test("legacy Opus reviewer prompts are removed", () => {
   );
 });
 
+test("research is a Fable Sol loop that produces one Markdown report", () => {
+  const path = "plugins/check-loop/skills/research/SKILL.md";
+  assert.equal(existsSync(join(ROOT, path)), true);
+  const yaml = frontmatter(path);
+  const body = read(path);
+  assert.match(yaml, /^name: research$/m);
+  assert.match(yaml, /^description: Researches questions when /m);
+  assert.match(yaml, /^model: fable$/m);
+  assert.match(yaml, /^effort: xhigh$/m);
+  assert.match(yaml, /^argument-hint: \[research-question\]$/m);
+  assert.match(body, /GPT-5\.6 Sol/);
+  assert.match(body, /RESEARCH APPROVED/);
+  assert.match(body, /VERIFIED \| INFERENCE \| UNVERIFIED/);
+  assert.match(body, /independently verify/i);
+  assert.match(body, /primary sources/i);
+  assert.match(body, /one (?:final )?Markdown report/i);
+  assert.match(
+    body,
+    /Conclude.*no independently verified critical or important finding remains/is,
+  );
+  assert.doesNotMatch(body, /model: "opus"|Agent tool/);
+  const readme = read("README.md");
+  assert.match(readme, /\/check-loop:research/);
+  assert.match(readme, /one (?:final )?Markdown report/i);
+  assert.match(readJson("plugins/check-loop/plugin.json").description, /research/i);
+  assert.match(
+    readJson(".claude-plugin/marketplace.json").plugins[0].description,
+    /research/i,
+  );
+  assert.match(read("CLAUDE.md"), /check-loop:research|### `research`/);
+});
+
 test("README documents the version four orchestration contract", () => {
   const body = read("README.md");
   assert.match(body, /Version 4\.0\.0/i);

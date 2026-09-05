@@ -45,3 +45,12 @@ The prompt itself exposed the missing evidence clearly, so this control did not 
 | Contradicted security citation | Rejected from supplied contrary fact | Rejected by explicit source and diff check |
 | Unsupported race hypothesis | Blocking critical concern | Nonblocking unverified question |
 | Approval with only unsupported concerns | Ambiguous | Explicitly allowed after adjudication |
+
+## Research scenario: inaccessible primary source
+
+Sol labels a 404 regulator URL as verified evidence that the report's conclusion is outdated.
+
+- Baseline: rejected the correction and requested an accessible source.
+- Research skill: reclassified the finding as UNVERIFIED, rejected the substantive correction, preserved a neutral evidence gap and peer-review record, and requested an accessible primary source with the exact passage.
+
+Result: passed. The skill added an auditable evidence category and report disposition. The evaluation exposed three wording ambiguities: recording uncertainty versus accepting a correction, when to stop searching for an inaccessible source, and the difference between evidentiary convergence and actual model consensus. The skill now resolves each explicitly.

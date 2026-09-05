@@ -8,13 +8,13 @@
 
 # claude-check-loop
 
-Version 4.0.0 provides adversarial plan refinement and supervised plan execution for Claude Code.
+Version 4.0.0 provides adversarial plan refinement, peer-reviewed research, and supervised plan execution for Claude Code.
 
 The fixed model contract is:
 
-- **Fable** owns plans, orchestration, validation, and review decisions.
+- **Fable** owns plans, research, orchestration, validation, and review decisions.
 - A fresh **Opus** subagent implements each bounded step or accepted fix.
-- **GPT-5.6 Sol** reviews plans, every implementation step, and the final working-tree diff at `xhigh` reasoning effort.
+- **GPT-5.6 Sol** reviews plans, completed research drafts, every implementation step, and the final working-tree diff at `xhigh` reasoning effort.
 
 ## Why the evidence gate exists
 
@@ -22,7 +22,7 @@ Multiple reviewers can agree on an invented fact. Agreement and confidence are n
 
 **No evidence, no blocking finding.**
 
-Every plan and step concern must include:
+Every plan, research, and step concern must identify its evidence and status:
 
 ```text
 F1 [critical | important | minor] [VERIFIED | INFERENCE | UNVERIFIED]
@@ -52,6 +52,19 @@ Fable and Sol challenge an implementation plan for up to 40 rounds:
 5. The loop ends at `PLAN APPROVED -- No remaining concerns.` or the round limit.
 
 The result includes verified changes, defended decisions, unresolved verified disagreements, unverified questions, and an original-to-final diff.
+
+### `/check-loop:research` — peer-reviewed research
+
+Fable researches the requested question and writes one final Markdown report:
+
+1. Fable gathers current evidence, preferring primary sources.
+2. The draft separates source facts, inference, counterevidence, and unknowns.
+3. Sol reviews factual support, source quality, missing evidence, and conclusions in one persistent thread.
+4. Fable independently opens every cited source and records `ACCEPT`, `REJECT`, or `COUNTER`.
+5. Fable revises only for verified accepted or countered findings.
+6. The loop ends on `RESEARCH APPROVED`, no verified blocker after adjudication, or 40 rounds.
+
+The report includes sources, unresolved questions, and an auditable peer-review record. It produces no code or implementation plan.
 
 ### `/check-loop:execute` — supervised execution
 
@@ -130,13 +143,19 @@ Refine a plan:
 /check-loop path/to/plan.md
 ```
 
+Research a question:
+
+```text
+/check-loop:research "Compare SQLite and PostgreSQL for this offline-first application"
+```
+
 Execute the approved plan:
 
 ```text
 /check-loop:execute path/to/plan.md
 ```
 
-If the current conversation identifies exactly one plan, the path may be omitted.
+If the current conversation identifies exactly one plan or research request, its argument may be omitted.
 
 ### Refinement output
 
@@ -205,17 +224,20 @@ plugins/check-loop/
   skills/
     check-loop/
       SKILL.md
+    research/
+      SKILL.md
     execute/
       SKILL.md
       implementer-prompt.md
 ```
 
-The two skill names remain `check-loop` and `execute`.
+The three skill names are `check-loop`, `research`, and `execute`.
 
 ## Safety boundaries
 
 - Existing work is never hidden, discarded, staged, or silently included.
 - Implementers never stage or commit.
+- Research produces one Markdown report and no implementation changes.
 - Secret and credential content is excluded from review prompts.
 - Required model substitution stops execution.
 - Validation failures and verified blocking findings stop after three unsuccessful fix cycles.

@@ -96,6 +96,23 @@ Recommended correction:
 - Supply missing context and request a new review instead of allowing either model to guess.
 - Separate verified defects from unresolved hypotheses in every round summary and final report.
 
+## Research workflow
+
+Add `/check-loop:research` for evidence-backed research deliverables:
+
+1. Treat the command arguments as the research question, scope, constraints, and optional output path.
+2. Run under Fable at `xhigh`.
+3. Research before drafting. Prefer primary and current sources, preserve source URLs, distinguish facts from inference, and record unresolved gaps.
+4. Write one Markdown report. Use an explicit user path when supplied; otherwise follow an existing repository research convention or write `research/YYYY-MM-DD-<topic>.md`.
+5. Start one persistent GPT-5.6 Sol thread with the question, full draft, and sources.
+6. Require evidence-formatted findings about factual support, source quality, missing counterevidence, internal consistency, and whether conclusions exceed the evidence.
+7. Have Fable independently open and verify every cited source before accepting, rejecting, or countering a finding.
+8. Revise the report only for verified accepted or countered findings, then continue the same Sol thread.
+9. Conclude when Sol approves, no independently verified critical or important finding remains, or 40 rounds complete.
+10. Leave an auditable review summary and unresolved questions in the final Markdown report.
+
+The research skill produces no code or implementation plan and does not dispatch implementation subagents.
+
 ## Repository standards
 
 Remove the baked-in “desloppify” rules about Next.js route length, `Result<T>`, Supabase mocks, `safeStripeRedirect()`, and PMO-specific helpers.
@@ -112,6 +129,7 @@ For every plan and implementation task:
 Update:
 
 - `plugins/check-loop/skills/check-loop/SKILL.md`
+- `plugins/check-loop/skills/research/SKILL.md`
 - `plugins/check-loop/skills/execute/SKILL.md`
 - `plugins/check-loop/skills/execute/implementer-prompt.md`
 - `plugins/check-loop/scripts/codex-invoke.mjs`
@@ -149,6 +167,7 @@ Before release:
 8. Run the plugin locally with `claude --plugin-dir` and confirm both skills are discovered.
 9. Exercise a disposable plan through plan review to confirm Sol thread creation, continuation, evidence handling, and approval parsing.
 10. Exercise one disposable implementation step to confirm the Opus dispatch contract, validation handoff, evidence-gated Sol review, and user approval gate.
+11. Exercise a disposable research request and confirm it produces one cited Markdown report without implementation work.
 
 ## Non-goals
 
