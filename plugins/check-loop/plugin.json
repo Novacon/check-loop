@@ -1,7 +1,7 @@
 {
   "name": "check-loop",
-  "version": "3.1.0",
-  "description": "Adversarial plan refinement loop + supervised execution -- powered by Codex CLI OAuth (xhigh reasoning)",
+  "version": "4.0.0",
+  "description": "Fable-orchestrated plan refinement and execution with Opus implementers and GPT-5.6 Sol review",
   "author": {
     "name": "lordknows13"
   },

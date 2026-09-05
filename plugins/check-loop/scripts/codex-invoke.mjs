@@ -37,10 +37,10 @@ import { resolveReviewTarget } from "./lib/git.mjs";
 import { resolveWorkspaceRoot } from "./lib/workspace.mjs";
 
 // ---------------------------------------------------------------------------
-// Model configuration -- null = use Codex CLI default, xhigh reasoning always
+// Model contract -- Sol reviews every plan and implementation step.
 // ---------------------------------------------------------------------------
 
-const MODEL = null;
+const MODEL = "gpt-5.6-sol";
 const EFFORT = "xhigh";
 
 // ---------------------------------------------------------------------------
@@ -159,7 +159,7 @@ function handleSetup(argv) {
   const lines = [
     "# Codex Setup (check-loop)",
     "",
-    `Model: ${MODEL ?? "(CLI default)"}`,
+    `Model: ${MODEL}`,
     `Reasoning effort: ${EFFORT}`,
     "",
     "Checks:",
@@ -204,7 +204,7 @@ async function main() {
       "  node codex-invoke.mjs review [--scope <auto|working-tree|branch>] [--base <ref>] [--cwd <path>]",
       "  node codex-invoke.mjs setup [--cwd <path>]",
       "",
-      `Model: ${MODEL ?? "(CLI default)"} | Effort: ${EFFORT}`,
+      `Model: ${MODEL} | Effort: ${EFFORT}`,
       "",
     ].join("\n"));
     return;
