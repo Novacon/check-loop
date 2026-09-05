@@ -102,3 +102,16 @@ test("legacy Opus reviewer prompts are removed", () => {
     false,
   );
 });
+
+test("README documents the version four orchestration contract", () => {
+  const body = read("README.md");
+  assert.match(body, /Version 4\.0\.0/i);
+  assert.match(body, /Claude Code 2\.1\.255 or later/);
+  assert.match(body, /Fable.*Opus.*GPT-5\.6 Sol/is);
+  assert.match(body, /No evidence, no blocking finding/);
+  assert.match(body, /VERIFIED.*INFERENCE.*UNVERIFIED/is);
+  assert.match(body, /independently verifies/i);
+  assert.doesNotMatch(body, /three review layers/i);
+  assert.doesNotMatch(body, /\bsonnet\b/i);
+  assert.doesNotMatch(body, /stash safety|spec review|quality review|desloppify/i);
+});

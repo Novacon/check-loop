@@ -8,95 +8,113 @@
 
 # claude-check-loop
 
-Adversarial plan refinement and supervised execution for Claude Code. Uses OpenAI Codex CLI (xhigh reasoning) as a real-time reviewer to battle-test plans and oversee implementation.
+Version 4.0.0 provides adversarial plan refinement and supervised plan execution for Claude Code.
+
+The fixed model contract is:
+
+- **Fable** owns plans, orchestration, validation, and review decisions.
+- A fresh **Opus** subagent implements each bounded step or accepted fix.
+- **GPT-5.6 Sol** reviews plans, every implementation step, and the final working-tree diff at `xhigh` reasoning effort.
+
+## Why the evidence gate exists
+
+Multiple reviewers can agree on an invented fact. Agreement and confidence are not proof.
+
+**No evidence, no blocking finding.**
+
+Every plan and step concern must include:
+
+```text
+F1 [critical | important | minor] [VERIFIED | INFERENCE | UNVERIFIED]
+Claim:
+Evidence: exact plan quote, file:line, or command output
+Impact:
+Failure condition:
+Recommended correction:
+```
+
+- `VERIFIED`: the cited source directly supports the claim.
+- `INFERENCE`: cited facts support a conclusion that has not been reproduced.
+- `UNVERIFIED`: evidence is missing or inaccessible.
+
+Only verified critical or important findings may block. Fable independently verifies every citation before accepting, rejecting, or countering a concern. Inferences, unverified claims, and minor findings remain nonblocking.
 
 ## Skills
 
-### `/check-loop` -- Plan Refinement
+### `/check-loop` — plan refinement
 
-Automates the cycle of sending your plan to Codex for review, defending or updating it, and repeating until both models reach consensus.
+Fable and Sol challenge an implementation plan for up to 40 rounds:
 
-1. Reads your plan file
-2. Sends it to Codex via the official App Server transport (broker connection sharing, proper streaming)
-3. Analyzes each piece of Codex's feedback -- accepts what's valid, fights back on what's overkill or wrong
-4. Updates the plan and sends it back to Codex
-5. Repeats until both models agree (or max 40 rounds)
-6. Presents a summary of what changed, what was defended, and any unresolved disagreements
+1. Fable reads the complete plan, original request, and relevant repository context.
+2. Sol reviews the plan using the evidence contract.
+3. Fable checks every cited source and records `ACCEPT`, `REJECT`, or `COUNTER`.
+4. Fable updates the plan only for verified accepted or countered findings.
+5. The loop ends at `PLAN APPROVED -- No remaining concerns.` or the round limit.
 
-### `/check-loop:execute` -- Supervised Execution with Subagent Implementation
+The result includes verified changes, defended decisions, unresolved verified disagreements, unverified questions, and an original-to-final diff.
 
-Executes an approved plan continuously using fresh subagents per step, with three review layers before committing. Designed to run after `/check-loop` has refined a plan, or on any plan you want to execute with review guardrails.
+### `/check-loop:execute` — supervised execution
 
-1. Locks the plan as read-only and captures a git baseline
-2. For each step: dispatches a fresh implementer subagent (opus by default, sonnet for pure frontend presentation tasks)
-3. Runs validation gates (tests, TypeScript, lint) on the subagent's work
-4. Dispatches a spec compliance reviewer subagent to verify the implementation matches requirements -- nothing more, nothing less
-5. Dispatches a code quality reviewer subagent to check desloppify standards and general quality
-6. Sends the diff to Codex for final review against the plan
-7. After all steps: native Codex code review or custom verification prompt verifies the full diff
-8. Presents a complete summary and waits for user approval before pushing
+Fable executes an approved plan without surrendering repository or git ownership:
 
-**Features:**
-- **Official OpenAI transport**: Uses the same transport layer as the official Codex plugin -- broker connection sharing, streaming notifications, proper thread management
-- **Codex CLI auth**: Uses your Codex CLI session directly -- no API keys, no config drift
-- **Subagent implementation**: Fresh implementer subagent per step with isolated context -- no confusion from prior steps, no context pollution
-- **Three review layers**: Spec compliance (subagent) -> code quality (subagent) -> Codex (external). Each catches different classes of issues.
-- **Native code review**: Final verification can use Codex's built-in `review/start` which auto-collects git context efficiently
-- **Continuous execution**: Runs through all steps without stopping -- only pauses at the end for approval
-- **Desloppify enforcement**: Code quality reviewer and Codex both enforce project standards (thin routes, business logic in lib/, Result<T> returns, outer try/catch, tests for new modules)
-- **Implementer escalation**: Subagents can report DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, or BLOCKED -- blocked steps get re-dispatched with more context or a more capable model before escalating to user
-- **Validation gates**: Tests, TypeScript, lint run after each step before reviews begin
-- **Severity tagging**: [minor] concerns auto-resolve after 3 rounds; [critical] always escalate to user
-- **Secret filtering**: `.env`, credentials, and secrets are never sent to Codex
-- **Stash safety**: Dirty working trees are stashed and restored with conflict handling
-- **Final approval gate**: All commits stay local until user explicitly approves the push
-- **Superpowers-aware**: Automatically ignores superpowers framework directives in plans so Codex reviews only the actual implementation steps
+1. Locks the plan and records the current commit and working-tree state.
+2. Asks before isolating or including existing user changes; never hides them.
+3. Defines one bounded step contract.
+4. Dispatches a fresh Opus implementer that does not stage or commit.
+5. Inspects the change and runs repository-native validation.
+6. Sends a secret-filtered, step-scoped diff and observed validation output to the persistent Sol thread.
+7. Independently verifies and adjudicates every Sol finding.
+8. Uses a fresh Opus fixer only for an accepted or countered blocking finding.
+9. Runs final project verification and a native Sol full working-tree review.
+10. Asks before any commit or push.
+
+There are no duplicate model reviewers and no project-specific coding rules. The current repository's instructions and conventions control.
 
 ## Prerequisites
 
-### 1. Node.js
+- Claude Code 2.1.255 or later. This version introduced the `fable` model alias used by the skill frontmatter.
+- Node.js 18 or later.
+- An authenticated Codex CLI installation.
 
-The transport layer requires Node.js v18+.
-
-### 2. Codex CLI
-
-Install and authenticate with the Codex CLI:
+Install and authenticate Codex:
 
 ```bash
 npm install -g @openai/codex
 codex login
 ```
 
-This opens your browser -- sign in to your OpenAI/ChatGPT account and authorize. Your session is stored locally at `~/.codex/auth.json`.
-
-For headless/remote machines (no browser):
+For headless machines:
 
 ```bash
 codex login --device-auth
 ```
 
-To verify everything is ready:
-
-```
-/check-loop:setup
-```
-
-Or from the command line:
+Verify the transport from the repository root:
 
 ```bash
-node scripts/codex-invoke.mjs setup
+node plugins/check-loop/scripts/codex-invoke.mjs setup
 ```
+
+The result must report:
+
+```text
+Model: gpt-5.6-sol
+Reasoning effort: xhigh
+Status: ready
+```
+
+Fable and Opus are Claude Code aliases and therefore follow Anthropic's current alias targets. GPT-5.6 Sol is pinned in `codex-invoke.mjs`.
 
 ## Installation
 
-### Option 1: Plugin Marketplace (Recommended)
+### Plugin marketplace
 
-```bash
+```text
 /plugin marketplace add lordknows13/claude-check-loop
 /plugin install check-loop@lordknows13-check-loop
 ```
 
-### Option 2: Git Clone
+### Git clone
 
 ```bash
 git clone https://github.com/lordknows13/claude-check-loop.git
@@ -104,145 +122,104 @@ cp -r claude-check-loop/plugins/check-loop/skills/* ~/.claude/skills/
 cp -r claude-check-loop/plugins/check-loop/scripts/* ~/.claude/scripts/
 ```
 
-### Option 3: Manual
-
-Copy the contents of `plugins/check-loop/skills/` and `plugins/check-loop/scripts/` into your Claude Code config.
-
 ## Usage
 
-### Plan Refinement
+Refine a plan:
 
-```
-/check-loop path/to/your/plan.md
-```
-
-Or just `/check-loop` if you have an active plan in your session -- it will try to auto-detect it.
-
-### Supervised Execution
-
-```
-/check-loop:execute path/to/your/plan.md
+```text
+/check-loop path/to/plan.md
 ```
 
-Typical workflow:
+Execute the approved plan:
 
-```
-/check-loop plans/my-feature.md          # Refine the plan with Codex
-/check-loop:execute plans/my-feature.md  # Execute with Codex oversight
-```
-
-### Example Output (Plan Refinement)
-
-```
-Starting adversarial refinement loop. Sending plan to Codex for review...
-
-Round 1: Codex raised 4 concerns.
-  - Accepted: 2 (F1, F3)
-  - Rejected: 1 (F2)
-  - Countered: 1 (F4)
-Updating plan and sending back to Codex...
-
-Round 2: Codex raised 1 new concern, accepted pushback on F2.
-  - Accepted: 1 (F5)
-Updating plan and sending back to Codex...
-
-Round 3: PLAN APPROVED -- No remaining concerns.
-
-## Refinement Complete
-**Rounds**: 3 of 40 max
-**Status**: Consensus reached
-...
+```text
+/check-loop:execute path/to/plan.md
 ```
 
-### Example Output (Supervised Execution)
+If the current conversation identifies exactly one plan, the path may be omitted.
 
+### Refinement output
+
+```text
+Round 2: 2 concerns
+- Accepted: F3
+- Rejected: F4
+- Countered: none
+- Unverified questions: F5
+
+PLAN APPROVED -- No remaining concerns.
 ```
---- check-loop:execute ---
 
-Plan: plans/my-feature.md (locked)
-Baseline: abc1234
-Steps: 3 identified
+### Execution output
 
-1. Add database migration (opus)
-2. Create lib module (opus)
-3. Update button styles (sonnet)
+```text
+Step 2: COMPLETE
+Implementation: Opus
+Validation: node --test — pass
+Sol: STEP APPROVED after 1 fix round
+Adjudication: accepted F3 | rejected F4 | countered none
+Unverified questions: F5
 
-Executing all steps continuously...
+Execution complete — awaiting approval
+Final verification: pass
+Final Sol review: no verified blocking findings
+Working tree: reviewed and uncommitted
+```
 
-Step 1 of 3: Add database migration (model: opus)
-  Implementer: DONE
-  Validation: tests pass | tsc pass
-  Spec review: SPEC_COMPLIANT
-  Quality review: QUALITY_APPROVED
-  Codex review: STEP APPROVED
-  Step 1: COMPLETE [Approved]
+## Transport
 
-Step 2 of 3: Create lib module (model: opus)
-  Implementer: DONE_WITH_CONCERNS (noted large existing file)
-  Validation: tests pass | tsc pass
-  Spec review: SPEC_ISSUES -- missing error case
-    Fix subagent dispatched, re-review: SPEC_COMPLIANT
-  Quality review: QUALITY_APPROVED
-  Codex review: STEP APPROVED
-  Step 2: COMPLETE [Approved with fixes]
+`plugins/check-loop/scripts/codex-invoke.mjs` talks to the official Codex App Server protocol over JSON-RPC. It reuses a broker connection, streams notifications, manages thread IDs, and uses the local Codex OAuth session. No runtime npm dependency or API key is required.
 
-Step 3 of 3: Update button styles (model: sonnet)
-  Implementer: DONE
-  Validation: tests pass | tsc pass
-  Spec review: SPEC_COMPLIANT
-  Quality review: QUALITY_APPROVED
-  Codex review: STEP APPROVED
-  Step 3: COMPLETE [Approved]
+Commands:
 
-Verification: VERIFIED -- All changes align with the plan.
+```bash
+# Check authentication and the pinned model contract
+node plugins/check-loop/scripts/codex-invoke.mjs setup
 
-## Execution Complete -- Awaiting Approval
+# Start a review thread
+node plugins/check-loop/scripts/codex-invoke.mjs turn \
+  --cwd "$(pwd)" \
+  --prompt "PROMPT"
 
-**Steps**: 3/3 completed
-**Reviews**: 3 spec + 3 quality + 3 Codex + 1 verification
-**Verification**: VERIFIED
+# Continue that thread
+node plugins/check-loop/scripts/codex-invoke.mjs turn \
+  --cwd "$(pwd)" \
+  --thread-id THREAD_ID \
+  --prompt "PROMPT"
 
-Push these commits to remote? (y/n)
+# Final native working-tree review
+node plugins/check-loop/scripts/codex-invoke.mjs review \
+  --cwd "$(pwd)" \
+  --scope working-tree
 ```
 
 ## Architecture
 
-```
+```text
 plugins/check-loop/
+  plugin.json
   scripts/
-    codex-invoke.mjs              # CLI: turn, review, setup subcommands
-    app-server-broker.mjs         # Shared Codex app-server connection broker
+    codex-invoke.mjs
+    app-server-broker.mjs
     lib/
-      app-server.mjs              # JSON-RPC client (broker + direct transports)
-      codex.mjs                   # Codex interaction (review/start, turn/start)
-      git.mjs                     # Git operations and review scope detection
-      broker-lifecycle.mjs        # Broker session management
-      broker-endpoint.mjs         # Cross-platform socket config
-      args.mjs                    # Argument parsing
-      process.mjs                 # Child process management
-      fs.mjs                      # File system utilities
-      state.mjs                   # Persistent state management
-      workspace.mjs               # Workspace root resolution
-      render.mjs                  # Output formatting
-      job-control.mjs             # Job status management
-      tracked-jobs.mjs            # Job lifecycle tracking
-      prompts.mjs                 # Template loading
   skills/
-    check-loop/SKILL.md           # Adversarial refinement loop
-    execute/SKILL.md              # Supervised execution with Codex oversight
-    execute/implementer-prompt.md
-    execute/spec-reviewer-prompt.md
-    execute/code-quality-reviewer-prompt.md
+    check-loop/
+      SKILL.md
+    execute/
+      SKILL.md
+      implementer-prompt.md
 ```
 
-The transport layer uses the official OpenAI Codex App Server protocol -- JSON-RPC over stdio with broker connection sharing. No MCP server, no npm dependencies at runtime. Uses your Codex CLI session directly with xhigh reasoning effort.
+The two skill names remain `check-loop` and `execute`.
 
-## How It Works
+## Safety boundaries
 
-- **Claude** is the plan author, defender, and orchestrator
-- **Claude subagents** (opus/sonnet) handle implementation and two-stage review (spec compliance + code quality) with fresh context per step
-- **Codex** (xhigh reasoning) is the adversarial reviewer providing final per-step and full-diff verification
-- The goal isn't unanimous agreement at any cost -- it's a genuinely better plan and correct implementation through honest debate and layered review
+- Existing work is never hidden, discarded, staged, or silently included.
+- Implementers never stage or commit.
+- Secret and credential content is excluded from review prompts.
+- Required model substitution stops execution.
+- Validation failures and verified blocking findings stop after three unsuccessful fix cycles.
+- Commit and push require explicit user approval.
 
 ## License
 
