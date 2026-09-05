@@ -32,3 +32,21 @@ test("plugin and marketplace publish version 4.0.0", () => {
   assert.equal(marketplace.metadata.version, "4.0.0");
   assert.equal(marketplace.plugins[0].version, "4.0.0");
 });
+
+test("plan refinement is owned by Fable against Sol", () => {
+  const path = "plugins/check-loop/skills/check-loop/SKILL.md";
+  const yaml = frontmatter(path);
+  const body = read(path);
+  assert.match(yaml, /^model: fable$/m);
+  assert.match(yaml, /^effort: xhigh$/m);
+  assert.match(body, /GPT-5\.6 Sol/);
+  assert.match(body, /PLAN APPROVED/);
+  assert.match(body, /ACCEPT/);
+  assert.match(body, /REJECT/);
+  assert.match(body, /COUNTER/);
+  assert.match(body, /VERIFIED \| INFERENCE \| UNVERIFIED/);
+  assert.match(body, /Evidence: exact plan quote, file:line, or command output/);
+  assert.match(body, /Only VERIFIED.*may block/is);
+  assert.match(body, /independently verify/i);
+  assert.doesNotMatch(body, /Codex CLI default/);
+});
