@@ -4,7 +4,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { buildThreadParams } from "../plugins/check-loop/scripts/lib/codex.mjs";
+import {
+  applyTurnNotification,
+  assertEffectiveThreadSettings,
+  buildResultStatus,
+  buildThreadParams,
+} from "../plugins/check-loop/scripts/lib/codex.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = (path) => readFileSync(join(ROOT, path), "utf8");
@@ -64,6 +69,35 @@ test("native review pins xhigh and all reviewer turns are read-only", () => {
     { encoding: "utf8" },
   );
   assert.doesNotMatch(help, /--sandbox/);
+});
+
+test("unexpected Sol model rerouting fails closed", () => {
+  const state = {
+    expectedModel: "gpt-5.6-sol",
+    error: null,
+    onProgress: null,
+  };
+  applyTurnNotification(state, {
+    method: "model/rerouted",
+    params: {
+      fromModel: "gpt-5.6-sol",
+      toModel: "gpt-5.5-codex",
+      reason: "safety",
+    },
+  });
+  assert.match(state.error.message, /Unexpected model reroute/);
+  assert.equal(
+    buildResultStatus({ error: state.error, finalTurn: { status: "completed" } }),
+    1,
+  );
+  assert.throws(
+    () =>
+      assertEffectiveThreadSettings(
+        { model: "gpt-5.5-codex", reasoningEffort: "xhigh" },
+        { model: "gpt-5.6-sol", effort: "xhigh" },
+      ),
+    /Unexpected effective model/,
+  );
 });
 
 test("plugin and marketplace publish version 4.0.0", () => {
@@ -134,6 +168,26 @@ test("execution uses Fable, Opus implementers, and Sol review only", () => {
   assert.match(body, /independently verify/i);
 });
 
+test("every Sol payload excludes secret content", () => {
+  for (const path of [
+    "plugins/check-loop/skills/check-loop/SKILL.md",
+    "plugins/check-loop/skills/research/SKILL.md",
+    "plugins/check-loop/skills/execute/SKILL.md",
+  ]) {
+    assert.match(read(path), /Before (?:sending|each).*Sol[\s\S]*?redact/is);
+  }
+
+  const execute = read("plugins/check-loop/skills/execute/SKILL.md");
+  assert.doesNotMatch(execute, /review \\\n[\s\S]*?--scope working-tree/);
+  assert.match(execute, /sanitized final review packet/i);
+});
+
+test("every dirty worktree requires explicit ownership", () => {
+  const execute = read("plugins/check-loop/skills/execute/SKILL.md");
+  assert.match(execute, /If any working-tree changes are present/);
+  assert.match(execute, /baseline.*separate/is);
+});
+
 test("implementer is Opus-only and leaves git ownership to Fable", () => {
   const body = read("plugins/check-loop/skills/execute/implementer-prompt.md");
   assert.match(body, /model: "opus"/);
@@ -198,10 +252,22 @@ test("research is a Fable Sol loop that produces one Markdown report", () => {
   assert.match(read("CLAUDE.md"), /check-loop:research|### `research`/);
 });
 
+test("round caps do not waive verified blockers", () => {
+  for (const path of [
+    "plugins/check-loop/skills/check-loop/SKILL.md",
+    "plugins/check-loop/skills/research/SKILL.md",
+  ]) {
+    assert.match(
+      read(path),
+      /At the round limit[\s\S]*?verified critical or important[\s\S]*?ask the user/is,
+    );
+  }
+});
+
 test("README documents the version four orchestration contract", () => {
   const body = read("README.md");
   assert.match(body, /Version 4\.0\.0/i);
-  assert.match(body, /Claude Code 2\.1\.255 or later/);
+  assert.match(body, /Claude Code 2\.1\.257 or later/);
   assert.match(body, /Fable.*Opus.*GPT-5\.6 Sol/is);
   assert.match(body, /No evidence, no blocking finding/);
   assert.match(body, /VERIFIED.*INFERENCE.*UNVERIFIED/is);
@@ -211,10 +277,21 @@ test("README documents the version four orchestration contract", () => {
   assert.doesNotMatch(body, /stash safety|spec review|quality review|desloppify/i);
 });
 
+test("evaluations load the skill whose behavior they exercise", () => {
+  assert.equal(readJson("evals/evals.json").skill_name, "check-loop");
+  assert.equal(readJson("evals/execute-evals.json").skill_name, "execute");
+  assert.equal(readJson("evals/research-evals.json").skill_name, "research");
+});
+
 test("repository guidance matches version four", () => {
   const body = read("CLAUDE.md");
   assert.match(body, /Fable.*Opus.*GPT-5\.6 Sol/is);
+  assert.match(body, /research/i);
   assert.match(body, /Current version: \*\*4\.0\.0\*\*/);
   assert.doesNotMatch(body, /spec-reviewer-prompt|code-quality-reviewer-prompt/);
   assert.doesNotMatch(body, /CLI default|commits each step/i);
+  assert.doesNotMatch(
+    read("plugins/check-loop/scripts/codex-invoke.mjs"),
+    /turn.*--sandbox MODE/,
+  );
 });

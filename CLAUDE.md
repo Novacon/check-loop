@@ -2,7 +2,7 @@
 
 ## Repository
 
-Claude Code plugin `lordknows13-check-loop`. It provides adversarial plan refinement and supervised execution over the official Codex App Server transport. No compiled code or runtime npm dependencies.
+Claude Code plugin `lordknows13-check-loop`. It provides adversarial plan refinement, peer-reviewed research, and supervised execution over the official Codex App Server transport. No compiled code or runtime npm dependencies.
 
 ## Architecture
 
@@ -49,12 +49,14 @@ Evidence statuses:
 - `UNVERIFIED`: evidence is missing or inaccessible.
 
 Only independently checked `VERIFIED` critical or important findings may block. Fable records `ACCEPT`, `REJECT`, or `COUNTER`. Reviewer agreement, confidence, severity, and repetition are not evidence.
+Secret or credential content is redacted from every Sol payload, including full plans, research reports, step diffs, validation output, and final review packets.
+
 
 ## Skills
 
 ### `check-loop`
 
-Fable owns the plan and debates GPT-5.6 Sol in one persistent thread. Fable independently checks cited plan text, repository locations, and command output before changing the plan. Refinement ends when Sol approves, no verified blocker remains after adjudication, or 40 rounds complete.
+Fable owns the plan and debates GPT-5.6 Sol in one persistent thread. Fable independently checks cited plan text, repository locations, and command output before changing the plan. Refinement ends when Sol approves or no verified blocker remains after adjudication. At 40 rounds, any remaining verified blocker requires user input.
 
 ### `research`
 
@@ -69,9 +71,9 @@ Fable researches the user's question and writes one Markdown report with current
 5. Sol reviews the step-scoped, secret-filtered diff and observed validation.
 6. Fable independently verifies and adjudicates every finding.
 7. A fresh Opus fixer handles only accepted or countered blocking findings.
-8. Final repository verification and native Sol review run before user approval.
+8. Final repository verification and a sanitized Sol review packet run before user approval.
 
-Never hide, discard, stage, commit, or push user work automatically. Commit and push require explicit user approval.
+Never hide, discard, stage, commit, or push existing user work automatically. Commit and push require explicit user approval.
 
 ## Transport
 
@@ -82,7 +84,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn --cwd /path --prompt 
 # Continue a review thread
 node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn --cwd /path --thread-id ID --prompt "text"
 
-# Native review
+# Optional native review of a scope confirmed to contain no protected content
 node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" review --cwd /path [--scope auto|working-tree|branch] [--base REF]
 
 # Authentication and model preflight

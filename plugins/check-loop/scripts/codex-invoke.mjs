@@ -9,7 +9,7 @@
  *
  * Subcommands:
  *
- *   turn   --prompt "..." [--thread-id ID] [--cwd PATH] [--sandbox MODE]
+ *   turn   --prompt "..." [--thread-id ID] [--cwd PATH]
  *          Start or continue a Codex conversation.
  *          Output: JSON { threadId, response }
  *
@@ -37,7 +37,7 @@ import { resolveReviewTarget } from "./lib/git.mjs";
 import { resolveWorkspaceRoot } from "./lib/workspace.mjs";
 
 // ---------------------------------------------------------------------------
-// Model contract -- Sol reviews every plan and implementation step.
+// Model contract -- Sol reviews every plan, research report, and implementation step.
 // ---------------------------------------------------------------------------
 
 const MODEL = "gpt-5.6-sol";

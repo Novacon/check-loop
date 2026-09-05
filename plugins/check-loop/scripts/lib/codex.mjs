@@ -9,6 +9,7 @@
  * @typedef {((update: string | { message: string, phase: string | null, threadId?: string | null, turnId?: string | null, stderrMessage?: string | null, logTitle?: string | null, logBody?: string | null }) => void)} ProgressReporter
  * @typedef {{
  *   threadId: string,
+ *   expectedModel: string | null,
  *   rootThreadId: string,
  *   threadIds: Set<string>,
  *   threadTurnIds: Map<string, string>,
@@ -76,12 +77,18 @@ export function buildThreadParams(cwd, options = {}) {
 
 /** @returns {ThreadResumeParams} */
 function buildResumeParams(threadId, cwd, options = {}) {
+  const config = {};
+  if (options.effort) {
+    config.model_reasoning_effort = options.effort;
+  }
+
   return {
     threadId,
     cwd,
     model: options.model ?? null,
     approvalPolicy: options.approvalPolicy ?? "never",
-    sandbox: options.sandbox ?? "read-only"
+    sandbox: options.sandbox ?? "read-only",
+    ...(Object.keys(config).length > 0 ? { config } : {})
   };
 }
 
@@ -124,6 +131,17 @@ function extractTurnId(message) {
     return message.params.turn.id;
   }
   return null;
+}
+
+export function assertEffectiveThreadSettings(thread, expected = {}) {
+  if (expected.model && thread?.model !== expected.model) {
+    throw new Error(`Unexpected effective model: expected ${expected.model}, received ${thread?.model ?? "unknown"}.`);
+  }
+  if (expected.effort && thread?.reasoningEffort !== expected.effort) {
+    throw new Error(
+      `Unexpected effective reasoning effort: expected ${expected.effort}, received ${thread?.reasoningEffort ?? "unknown"}.`
+    );
+  }
 }
 
 function collectTouchedFiles(fileChanges) {
@@ -313,6 +331,7 @@ function createTurnCaptureState(threadId, options = {}) {
 
   return {
     threadId,
+    expectedModel: options.expectedModel ?? null,
     rootThreadId: threadId,
     threadIds: new Set([threadId]),
     threadTurnIds: new Map(),
@@ -490,7 +509,7 @@ function recordItem(state, item, lifecycle, threadId = null) {
   }
 }
 
-function applyTurnNotification(state, message) {
+export function applyTurnNotification(state, message) {
   switch (message.method) {
     case "thread/started":
       registerThread(state, message.params.thread.id, {
@@ -535,6 +554,14 @@ function applyTurnNotification(state, message) {
       {
         const update = describeCompletedItem(state, message.params.item);
         emitProgress(state.onProgress, update?.message, update?.phase ?? null);
+      }
+      break;
+    case "model/rerouted":
+      if (state.expectedModel && message.params.toModel !== state.expectedModel) {
+        state.error = new Error(
+          `Unexpected model reroute: expected ${state.expectedModel}, received ${message.params.toModel ?? "unknown"} from ${message.params.fromModel ?? "unknown"}.`
+        );
+        emitProgress(state.onProgress, state.error.message, "failed");
       }
       break;
     case "error":
@@ -646,6 +673,7 @@ async function withAppServer(cwd, fn) {
 
 async function startThread(client, cwd, options = {}) {
   const response = await client.request("thread/start", buildThreadParams(cwd, options));
+  assertEffectiveThreadSettings(response.thread, options);
   const threadId = response.thread.id;
   if (options.threadName) {
     await client.request("thread/name/set", { threadId, name: options.threadName });
@@ -654,10 +682,15 @@ async function startThread(client, cwd, options = {}) {
 }
 
 async function resumeThread(client, threadId, cwd, options = {}) {
-  return client.request("thread/resume", buildResumeParams(threadId, cwd, options));
+  const response = await client.request("thread/resume", buildResumeParams(threadId, cwd, options));
+  assertEffectiveThreadSettings(response.thread, options);
+  return response;
 }
 
-function buildResultStatus(turnState) {
+export function buildResultStatus(turnState) {
+  if (turnState.error) {
+    return 1;
+  }
   return turnState.finalTurn?.status === "completed" ? 0 : 1;
 }
 
@@ -812,6 +845,7 @@ export async function runAppServerReview(cwd, options = {}) {
         }),
       {
         onProgress: options.onProgress,
+        expectedModel: options.model,
         onResponse(response, state) {
           if (response.reviewThreadId) {
             state.threadIds.add(response.reviewThreadId);
@@ -851,6 +885,7 @@ export async function runAppServerTurn(cwd, options = {}) {
       const response = await resumeThread(client, options.resumeThreadId, cwd, {
         model: options.model,
         sandbox: options.sandbox,
+        effort: options.effort,
         ephemeral: false
       });
       threadId = response.thread.id;
@@ -885,7 +920,7 @@ export async function runAppServerTurn(cwd, options = {}) {
           effort: options.effort ?? null,
           outputSchema: options.outputSchema ?? null
         }),
-      { onProgress: options.onProgress }
+      { onProgress: options.onProgress, expectedModel: options.model }
     );
 
     return {

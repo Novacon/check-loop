@@ -96,6 +96,10 @@ Only VERIFIED critical or important findings may block or change the plan, and F
 
 Reject invented, stale, mismatched, or inaccessible citations. Supply missing context and request a new review instead of guessing.
 
+## Secret handling
+
+Before sending any payload to Sol, inspect it and redact secret or credential values. Omit contents from `*.env*`, `*.secret*`, `*credentials*`, `**/secrets/**`, ignored environment files, binary payloads, and dependency caches. Name an omitted path only when Sol needs the omission context; never include its content.
+
 ## Initial Sol prompt
 
 Send the original request and full plan using this contract:
@@ -203,7 +207,7 @@ PLAN APPROVED -- No remaining concerns.
 
 ## Loop and stopping rules
 
-Conclude refinement when Sol approves, when no independently verified critical or important finding remains after adjudication, or when 40 rounds complete. A rejected, minor, inferred, or unverified item does not block convergence; retain it in the appropriate final-report category.
+Conclude refinement when Sol approves or when no independently verified critical or important finding remains after adjudication. A rejected, minor, inferred, or unverified item does not block convergence; retain it in the appropriate final-report category. Never waive a verified blocker merely because the round limit was reached.
 
 After each round, report:
 
@@ -215,7 +219,7 @@ Round N: X concerns
 - Unverified questions: F...
 ```
 
-At the round limit, stop and list unresolved verified disagreements separately from unverified hypotheses. Do not turn unresolved uncertainty into a defect.
+At the round limit, conclude only if no independently verified critical or important finding remains. Otherwise preserve the current plan and adjudication record, mark refinement blocked, list the unresolved verified disagreements separately from unverified hypotheses, and ask the user how to resolve the verified blocker.
 
 ## Final report
 

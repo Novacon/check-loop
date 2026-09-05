@@ -14,7 +14,7 @@ The fixed model contract is:
 
 - **Fable** owns plans, research, orchestration, validation, and review decisions.
 - A fresh **Opus** subagent implements each bounded step or accepted fix.
-- **GPT-5.6 Sol** reviews plans, completed research drafts, every implementation step, and the final working-tree diff at `xhigh` reasoning effort.
+- **GPT-5.6 Sol** reviews plans, completed research drafts, every implementation step, and a sanitized final execution packet at `xhigh` reasoning effort.
 
 ## Why the evidence gate exists
 
@@ -49,7 +49,7 @@ Fable and Sol challenge an implementation plan for up to 40 rounds:
 2. Sol reviews the plan using the evidence contract.
 3. Fable checks every cited source and records `ACCEPT`, `REJECT`, or `COUNTER`.
 4. Fable updates the plan only for verified accepted or countered findings.
-5. The loop ends at `PLAN APPROVED -- No remaining concerns.` or the round limit.
+5. The loop ends at `PLAN APPROVED -- No remaining concerns.` or when no independently verified blocker remains. At 40 rounds, a verified blocker stops for user input.
 
 The result includes verified changes, defended decisions, unresolved verified disagreements, unverified questions, and an original-to-final diff.
 
@@ -62,7 +62,7 @@ Fable researches the requested question and writes one final Markdown report:
 3. Sol reviews factual support, source quality, missing evidence, and conclusions in one persistent thread.
 4. Fable independently opens every cited source and records `ACCEPT`, `REJECT`, or `COUNTER`.
 5. Fable revises only for verified accepted or countered findings.
-6. The loop ends on `RESEARCH APPROVED`, no verified blocker after adjudication, or 40 rounds.
+6. The loop ends on `RESEARCH APPROVED` or when no independently verified blocker remains. At 40 rounds, a verified blocker preserves the draft and stops for user input.
 
 The report includes sources, unresolved questions, and an auditable peer-review record. It produces no code or implementation plan.
 
@@ -71,21 +71,21 @@ The report includes sources, unresolved questions, and an auditable peer-review 
 Fable executes an approved plan without surrendering repository or git ownership:
 
 1. Locks the plan and records the current commit and working-tree state.
-2. Asks before isolating or including existing user changes; never hides them.
+2. Asks before isolating or including any existing user changes; never hides them.
 3. Defines one bounded step contract.
 4. Dispatches a fresh Opus implementer that does not stage or commit.
 5. Inspects the change and runs repository-native validation.
 6. Sends a secret-filtered, step-scoped diff and observed validation output to the persistent Sol thread.
 7. Independently verifies and adjudicates every Sol finding.
 8. Uses a fresh Opus fixer only for an accepted or countered blocking finding.
-9. Runs final project verification and a native Sol full working-tree review.
+9. Runs final project verification and sends a sanitized final review packet to the persistent Sol thread.
 10. Asks before any commit or push.
 
 There are no duplicate model reviewers and no project-specific coding rules. The current repository's instructions and conventions control.
 
 ## Prerequisites
 
-- Claude Code 2.1.255 or later. This version introduced the `fable` model alias used by the skill frontmatter.
+- Claude Code 2.1.257 or later. This version introduced the `fable` model alias used by the skill frontmatter.
 - Node.js 18 or later.
 - An authenticated Codex CLI installation.
 
@@ -187,7 +187,7 @@ Working tree: reviewed and uncommitted
 
 ## Transport
 
-`plugins/check-loop/scripts/codex-invoke.mjs` talks to the official Codex App Server protocol over JSON-RPC. It reuses a broker connection, streams notifications, manages thread IDs, and uses the local Codex OAuth session. No runtime npm dependency or API key is required.
+`plugins/check-loop/scripts/codex-invoke.mjs` talks to the official Codex App Server protocol over JSON-RPC. It reuses a broker connection, streams notifications, manages thread IDs, and uses the local Codex OAuth session. It checks the effective model and reasoning effort and fails if Codex reroutes away from GPT-5.6 Sol. No runtime npm dependency or API key is required.
 
 Commands:
 
@@ -206,10 +206,6 @@ node plugins/check-loop/scripts/codex-invoke.mjs turn \
   --thread-id THREAD_ID \
   --prompt "PROMPT"
 
-# Final native working-tree review
-node plugins/check-loop/scripts/codex-invoke.mjs review \
-  --cwd "$(pwd)" \
-  --scope working-tree
 ```
 
 ## Architecture

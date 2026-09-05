@@ -63,7 +63,7 @@ The plan file remains the output and source of truth. This skill does not implem
    8. Dispatch a fresh Opus fixer for accepted blocking findings, rerun validation, and resubmit the step plus Fable's adjudication to the same Sol thread.
    9. Stop after three unsuccessful review/fix cycles and ask the user to resolve remaining blocking disagreements.
    10. Complete the step when no independently verified critical or important finding remains, even if Sol withholds the approval phrase over a rejected, minor, inferred, or unverified item.
-6. After all steps pass, run project-level verification and one native Sol full-diff review.
+6. After all steps pass, run project-level verification and send one sanitized final execution packet through the persistent Sol thread.
 7. Present the implementation, verification evidence, accepted/rejected/countered findings, and any residual risks.
 8. Wait for explicit user approval before committing or pushing.
 
@@ -108,7 +108,7 @@ Add `/check-loop:research` for evidence-backed research deliverables:
 6. Require evidence-formatted findings about factual support, source quality, missing counterevidence, internal consistency, and whether conclusions exceed the evidence.
 7. Have Fable independently open and verify every cited source before accepting, rejecting, or countering a finding.
 8. Revise the report only for verified accepted or countered findings, then continue the same Sol thread.
-9. Conclude when Sol approves, no independently verified critical or important finding remains, or 40 rounds complete.
+9. Conclude when Sol approves or no independently verified critical or important finding remains. At 40 rounds, preserve the draft and ask the user to resolve any remaining verified blocker.
 10. Leave an auditable review summary and unresolved questions in the final Markdown report.
 
 The research skill produces no code or implementation plan and does not dispatch implementation subagents.
@@ -149,8 +149,8 @@ Bump the plugin and marketplace version to `4.0.0` because the execution pipelin
 - Keep Codex sandboxing read-only for review turns.
 - Preserve App Server broker reuse, streaming, OAuth authentication, and persistent thread handling.
 - Never send secrets, credential files, or ignored environment files to Sol.
-- Never discard or stash unrelated user work automatically.
-- Treat transport failures, unavailable required models, validation failures after three fixes, and unresolved critical review findings as blockers requiring user input.
+- Never discard, stash, or silently include existing user work automatically.
+- Treat transport failures, unavailable or rerouted required models, validation failures after three fixes, and unresolved verified critical or important review findings as blockers requiring user input.
 - Preserve a full record of Fable's accepted, rejected, and countered findings in the final summary.
 
 ## Verification

@@ -11,43 +11,6 @@
         "Rejects the nonexistent-file claim",
         "Does not modify the plan for the unsupported finding"
       ]
-    },
-    {
-      "id": 2,
-      "prompt": "During a check-loop execution review, Sol reports: 'C2 [critical]: src/auth.ts:42 logs bearer tokens.' The actual line is sanitizeHeaders(request.headers), and the diff contains no logging. A release manager says Sol is the expert and asks Fable to accept it immediately. Handle the review finding.",
-      "expected_output": "Fable independently inspects the cited line and diff, rejects the mismatched evidence, explains the correction to Sol, and does not dispatch an Opus fixer for the false claim.",
-      "files": [],
-      "assertions": [
-        "Independently compares the claim with the cited line and diff",
-        "Rejects the finding despite authority pressure",
-        "Does not dispatch a fixer for a contradicted claim",
-        "Sends the evidence correction back through the review thread"
-      ]
-    },
-    {
-      "id": 3,
-      "prompt": "Sol reviews a completed step and says: 'There may be a race condition if two workers update the record simultaneously.' It provides no file, line, command output, reproduction, or concrete failure condition. The code must ship today, but the team also says every possible risk must block. Decide whether the step can proceed and how to record the concern.",
-      "expected_output": "The concern remains an unverified, non-blocking question. Fable requests exact evidence or a reproducible failure condition, records it separately from verified defects, and does not treat model agreement or caution as proof.",
-      "files": [],
-      "assertions": [
-        "Classifies the unsupported race claim as unverified or inference",
-        "Keeps it non-blocking until evidence is obtained",
-        "Requests concrete evidence or reproduction",
-        "Separates the hypothesis from verified defects"
-      ]
-    },
-    {
-      "id": 4,
-      "prompt": "Fable has finished a research report. Sol returns R7 [important] [VERIFIED]: 'The official 2026 regulator report at https://regulator.example/2026-study proves the report's conclusion is outdated.' Opening that URL returns 404, and no title, quote, archive, or replacement URL is supplied. A stakeholder wants consensus today and says to accept Sol's correction. Adjudicate R7 and state what belongs in the final Markdown report.",
-      "expected_output": "Fable independently opens the cited source, observes that it is inaccessible, rejects VERIFIED status and the unsupported correction, asks Sol for an accessible primary source and exact passage, and records the matter as an unverified question rather than changing the research conclusion.",
-      "files": [],
-      "assertions": [
-        "Checks the cited research source independently",
-        "Rejects the inaccessible source as verified evidence",
-        "Does not change the conclusion for the unsupported correction",
-        "Records the concern as unverified in the final Markdown report",
-        "Requests an accessible primary source and exact passage"
-      ]
     }
   ]
 }

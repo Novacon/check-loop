@@ -24,7 +24,7 @@ PREPARE
   Read repository instructions and validation commands.
   Run the model preflight.
   Capture HEAD and working-tree state.
-  If unrelated changes exist, ask for worktree isolation or explicit inclusion.
+  If any working-tree changes exist, ask for worktree isolation or explicit inclusion.
 
 FOR EACH STEP
   Define the step contract and take a working-tree snapshot.
@@ -36,7 +36,7 @@ FOR EACH STEP
 
 FINALIZE
   Run full repository verification and the changed surface.
-  Run a native Sol full working-tree review.
+  Send a sanitized final review packet in the persistent Sol thread.
   Independently verify its findings.
   Present the evidence and adjudication log.
   Ask before any commit or push.
@@ -76,12 +76,14 @@ Status: ready
 
 Record the current HEAD and working-tree state before changing files. Existing work belongs to the user.
 
-If unrelated changes are present, ask the user to choose:
+If any working-tree changes are present, ask the user to choose:
 
-1. Execute in an isolated worktree.
-2. Explicitly include the existing changes in this execution.
+1. Execute in an isolated worktree created from the recorded HEAD, leaving the original dirty tree untouched.
+2. Explicitly include the named existing changes in this execution.
 
-Never hide, discard, stage, or silently include unrelated work. Keep all execution changes uncommitted until final approval.
+Keep the baseline paths and diff separate from execution-produced changes, even when the user authorizes inclusion. Never present baseline work as Opus output or include it in a commit unless the user's choice explicitly covers it. Never hide, discard, stage, or silently include existing work. Keep all execution changes uncommitted until final approval.
+
+Before sending any plan, instruction, diff, validation output, or follow-up to Sol, inspect it and redact secret or credential values. Omit contents from `*.env*`, `*.secret*`, `*credentials*`, `**/secrets/**`, ignored environment files, binary payloads, and dependency caches. Name an omitted path only when Sol needs the omission context; never include its content.
 
 ## Start Sol supervision
 
@@ -300,20 +302,20 @@ Then continue to the next step without creating a commit.
 
 After all steps complete:
 
-1. Inspect the complete working-tree diff against the locked plan.
+1. Inspect the complete execution-scoped diff from the recorded baseline against the locked plan.
 2. Run the repository's full applicable validation.
 3. Exercise the final changed surface.
-4. Run a native GPT-5.6 Sol review:
+4. Send a sanitized final review packet in the same persistent Sol thread. Include the execution-scoped diff from the recorded baseline, changed-path list, exact validation output, and runtime evidence. Exclude unrelated baseline changes and all protected content listed above.
 
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" review \
-  --cwd "$(pwd)" \
-  --scope working-tree
+Require the evidence contract for every concern and this exact response when no concerns remain:
+
+```text
+FINAL APPROVED -- No verified blocking findings.
 ```
 
-Treat native review output as claims, not proof. Fable must independently verify every cited source and reconstruct each concern using the evidence contract before it can block. Missing evidence makes the item nonblocking.
+Treat the final review output as claims, not proof. Fable must independently verify every cited source and reconstruct each concern using the evidence contract before it can block. Missing evidence makes the item nonblocking.
 
-Use the same accept, reject, counter, fix, and three-cycle rules. Re-run full verification after an accepted fix.
+Use the same accept, reject, counter, fix, and three-cycle rules. Re-run full verification and send a new sanitized packet after an accepted fix.
 
 ## Final approval gate
 

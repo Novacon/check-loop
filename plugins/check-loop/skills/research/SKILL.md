@@ -107,6 +107,8 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn \
   --prompt "PROMPT"
 ```
 
+Before sending any report or follow-up to Sol, inspect it and redact secret or credential values. Omit contents from `*.env*`, `*.secret*`, `*credentials*`, `**/secrets/**`, ignored environment files, binary payloads, and dependency caches. Name an omitted path only when Sol needs the omission context; never include its content.
+
 ### Initial Sol prompt
 
 ```text
@@ -200,7 +202,7 @@ RESEARCH APPROVED -- No verified blocking findings.
 
 ## Convergence
 
-Conclude the review when Sol approves, when no independently verified critical or important finding remains after adjudication, or when 40 rounds complete. Sol withholding the approval phrase over a rejected, minor, inferred, or unverified concern does not block completion.
+Conclude the review when Sol approves or when no independently verified critical or important finding remains after adjudication. Sol withholding the approval phrase over a rejected, minor, inferred, or unverified concern does not block completion. Never waive a verified blocker merely because the round limit was reached.
 Call the result `consensus` only when Sol emitted the approval phrase. Otherwise report `no verified blocking findings after adjudication`; never imply model agreement that did not occur.
 
 After each round, record:
@@ -213,7 +215,7 @@ Round N: X concerns
 - Unverified questions: R...
 ```
 
-At the round limit, separate unresolved verified disagreements from unverified questions. Never manufacture consensus by hiding either category.
+At the round limit, conclude only if no independently verified critical or important finding remains. Otherwise preserve the draft and adjudication record, mark research blocked, separate unresolved verified disagreements from unverified questions, and ask the user how to resolve the verified blocker.
 
 ## Final Markdown report
 

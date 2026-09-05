@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Release and install `check-loop` 4.0.0 with Fable 5.1 orchestrating, Opus 5 subagents implementing, and GPT-5.6 Sol reviewing the plan and every implementation step.
+**Goal:** Release and install `check-loop` 4.0.0 with Fable 5.1 owning plan refinement, peer-reviewed research, and execution; Opus 5 subagents implementing execution steps; and GPT-5.6 Sol reviewing plans, research, and every implementation step.
 
-**Architecture:** Claude Code skill frontmatter selects the `fable` alias with `xhigh` effort for both workflows. Fresh `opus` subagents implement or fix one plan step at a time; the Fable parent runs validation and adjudicates findings from one persistent, read-only `gpt-5.6-sol` App Server thread. The old Opus reviewer stages, Sonnet path, automatic stashing, step commits, and project-specific rules are removed.
+**Architecture:** Claude Code skill frontmatter selects the `fable` alias with `xhigh` effort for plan refinement, research, and execution. Fresh `opus` subagents implement or fix one execution step at a time; the Fable parent runs validation and adjudicates findings from one persistent, read-only `gpt-5.6-sol` App Server thread per workflow. Research uses Fable and Sol without an implementer. The old Opus reviewer stages, Sonnet path, automatic stashing, step commits, and project-specific rules are removed.
 
 **Tech Stack:** Claude Code plugin skills, Node.js ESM, Node built-in test runner, Codex App Server, Git, JSON plugin manifests.
 
@@ -400,7 +400,7 @@ FOR EACH STEP
 
 FINALIZE
   Run full project verification.
-  Run native Sol full working-tree review.
+  Send a sanitized final review packet in the persistent Sol thread.
   Present evidence and adjudication log.
   Ask before any commit or push.
 ```
@@ -477,7 +477,7 @@ Fixes:     Fable adjudication → fresh Opus 5 fixer → validation → same Sol
 Final:     full verification → Sol full-diff review → user approval → commit/push
 ```
 
-Update prerequisites to Claude Code 2.1.255 or later because the `fable` alias requires it. State that Sol is pinned while Fable and Opus use Claude Code aliases. Document the evidence gate as “No evidence, no blocking finding,” including the `VERIFIED`, `INFERENCE`, and `UNVERIFIED` categories and Fable's independent verification responsibility. Remove three-review-layer, Sonnet frontend, step-commit, stash, and PMO-specific statements. Keep installation commands and transport explanation.
+Update prerequisites to Claude Code 2.1.257 or later because that release introduced the `fable` alias. State that Sol is pinned while Fable and Opus use Claude Code aliases. Document the evidence gate as “No evidence, no blocking finding,” including the `VERIFIED`, `INFERENCE`, and `UNVERIFIED` categories and Fable's independent verification responsibility. Remove three-review-layer, Sonnet frontend, step-commit, stash, and PMO-specific statements. Keep installation commands and transport explanation.
 
 - [ ] **Step 4: Run the README test and full contract suite**
 
@@ -542,7 +542,7 @@ Status: ready
 
 - [ ] **Step 3: Verify plugin discovery under Fable**
 
-Run Claude Code 2.1.255 or later with the local plugin directory:
+Run Claude Code 2.1.257 or later with the local plugin directory:
 
 ```bash
 claude --plugin-dir ./plugins/check-loop --model fable --effort xhigh -p "List the check-loop skills loaded from this plugin and their declared model roles. Do not modify files."
@@ -664,7 +664,7 @@ Added before publishing 4.0.0 in response to the user's expanded scope.
 - Modify: `plugins/check-loop/plugin.json`
 - Modify: `.claude-plugin/marketplace.json`
 - Modify: `tests/orchestration-contract.test.mjs`
-- Modify: `evals/evals.json`
+- Create: `evals/research-evals.json`
 
 **Contract:**
 
@@ -672,7 +672,7 @@ Added before publishing 4.0.0 in response to the user's expanded scope.
 - Fable at `xhigh` performs the research and owns the Markdown report.
 - GPT-5.6 Sol at `xhigh` peer-reviews the complete report in one persistent read-only thread.
 - Every concern uses the evidence contract; Fable independently verifies source citations.
-- The loop stops on approval, no verified critical/important concern, or 40 rounds.
+- The loop stops on approval or no verified critical/important concern. At 40 rounds, any remaining verified blocker requires user input.
 - One final Markdown report is the only deliverable. No code, implementation plan, or implementation subagent.
 - Explicit output paths win. Otherwise use an existing repository research convention or `research/YYYY-MM-DD-<topic>.md`.
 
