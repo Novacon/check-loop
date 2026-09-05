@@ -48,7 +48,25 @@ test("plan refinement is owned by Fable against Sol", () => {
   assert.match(body, /Evidence: exact plan quote, file:line, or command output/);
   assert.match(body, /Only VERIFIED.*may block/is);
   assert.match(body, /independently verify/i);
+  assert.match(
+    body,
+    /Conclude refinement when.*no independently verified critical or important finding remains/is,
+  );
   assert.doesNotMatch(body, /Codex CLI default/);
+});
+
+test("skill frontmatter preserves names and trigger-only descriptions", () => {
+  const plan = frontmatter("plugins/check-loop/skills/check-loop/SKILL.md");
+  const execute = frontmatter("plugins/check-loop/skills/execute/SKILL.md");
+  assert.match(plan, /^name: check-loop$/m);
+  assert.match(execute, /^name: execute$/m);
+  assert.match(plan, /^description: Refines implementation plans when /m);
+  assert.match(execute, /^description: Executes approved multi-step plans when /m);
+  for (const yaml of [plan, execute]) {
+    assert.match(yaml, /^model: fable$/m);
+    assert.match(yaml, /^effort: xhigh$/m);
+    assert.match(yaml, /^argument-hint: \[plan-path\]$/m);
+  }
 });
 
 test("execution uses Fable, Opus implementers, and Sol review only", () => {
@@ -68,6 +86,10 @@ test("execution uses Fable, Opus implementers, and Sol review only", () => {
   assert.doesNotMatch(body, /safeStripeRedirect|NextResponse|Supabase|Result<T>/);
   assert.match(body, /VERIFIED \| INFERENCE \| UNVERIFIED/);
   assert.match(body, /Only VERIFIED.*may block/is);
+  assert.match(
+    body,
+    /Complete the step when.*no independently verified critical or important finding remains/is,
+  );
   assert.match(body, /independently verify/i);
 });
 

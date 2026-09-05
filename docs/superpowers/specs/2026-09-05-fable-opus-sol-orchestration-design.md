@@ -62,6 +62,7 @@ The plan file remains the output and source of truth. This skill does not implem
    7. Have Fable classify every finding as `ACCEPT`, `REJECT`, or `COUNTER`. Reject unsupported or purely stylistic findings with repository evidence.
    8. Dispatch a fresh Opus fixer for accepted blocking findings, rerun validation, and resubmit the step plus Fable's adjudication to the same Sol thread.
    9. Stop after three unsuccessful review/fix cycles and ask the user to resolve remaining blocking disagreements.
+   10. Complete the step when no independently verified critical or important finding remains, even if Sol withholds the approval phrase over a rejected, minor, inferred, or unverified item.
 6. After all steps pass, run project-level verification and one native Sol full-diff review.
 7. Present the implementation, verification evidence, accepted/rejected/countered findings, and any residual risks.
 8. Wait for explicit user approval before committing or pushing.

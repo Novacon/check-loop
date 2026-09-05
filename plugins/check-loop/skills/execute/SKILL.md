@@ -1,6 +1,6 @@
 ---
 name: execute
-description: Executes an approved plan with Fable orchestration, fresh Opus implementation subagents, repository-native validation, and GPT-5.6 Sol review of every step. Use after check-loop approves a plan or when the user requests supervised plan execution.
+description: Executes approved multi-step plans when they need isolated implementation workers, repository-native validation, and adversarial review before commit or push.
 model: fable
 effort: xhigh
 argument-hint: [plan-path]
@@ -271,7 +271,7 @@ Do not repeat a rejected concern without new evidence.
 
 ### 6. Fix or approve
 
-If Sol returns `STEP APPROVED`, complete the step.
+Complete the step when Sol returns `STEP APPROVED` or when no independently verified critical or important finding remains after adjudication. Sol's refusal to approve because of a rejected, minor, inferred, or unverified item does not block completion; record the item in its nonblocking category.
 
 For each accepted or countered blocking finding:
 
@@ -289,7 +289,7 @@ Report:
 Step N: COMPLETE
 Implementation: Opus
 Validation: commands and outcomes
-Sol: STEP APPROVED [after N fix rounds]
+Sol: STEP APPROVED [after N fix rounds] | no verified blockers after adjudication
 Adjudication: accepted F... | rejected F... | countered F...
 Unverified questions: F... or none
 ```
@@ -372,6 +372,7 @@ If approved, create only the requested commit or commits and push only the reque
 | "The deadline makes staging harmless." | Staging changes review scope and user state. |
 | "This convention is industry standard." | Repository instructions control. |
 | "It is only a minor automatic commit." | The user owns commit boundaries. |
+| "Sol withheld the approval phrase, so the hypothesis blocks." | Completion depends on verified blockers, not wording. |
 
 ## Review red flags
 

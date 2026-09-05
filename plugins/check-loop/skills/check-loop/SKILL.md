@@ -1,6 +1,6 @@
 ---
 name: check-loop
-description: Use when an implementation plan needs adversarial architecture review, assumption checking, simplification, or consensus before implementation.
+description: Refines implementation plans when they need adversarial architecture review, assumption checking, simplification, or evidence-backed consensus before implementation.
 model: fable
 effort: xhigh
 argument-hint: [plan-path]
@@ -203,7 +203,7 @@ PLAN APPROVED -- No remaining concerns.
 
 ## Loop and stopping rules
 
-Continue until Sol approves or 40 rounds complete.
+Conclude refinement when Sol approves, when no independently verified critical or important finding remains after adjudication, or when 40 rounds complete. A rejected, minor, inferred, or unverified item does not block convergence; retain it in the appropriate final-report category.
 
 After each round, report:
 

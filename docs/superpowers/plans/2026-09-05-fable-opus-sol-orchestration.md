@@ -201,7 +201,7 @@ Use this frontmatter:
 ```yaml
 ---
 name: check-loop
-description: Refines an implementation plan through an adversarial loop between Fable and GPT-5.6 Sol. Use when a plan needs architecture review, assumption checking, simplification, or consensus before implementation.
+description: Refines implementation plans when they need adversarial architecture review, assumption checking, simplification, or evidence-backed consensus before implementation.
 model: fable
 effort: xhigh
 argument-hint: [plan-path]
@@ -366,7 +366,7 @@ Use this frontmatter:
 ```yaml
 ---
 name: execute
-description: Executes an approved plan with Fable orchestration, fresh Opus implementation subagents, repository-native validation, and GPT-5.6 Sol review of every step. Use after check-loop approves a plan or when the user requests supervised plan execution.
+description: Executes approved multi-step plans when they need isolated implementation workers, repository-native validation, and adversarial review before commit or push.
 model: fable
 effort: xhigh
 argument-hint: [plan-path]
@@ -395,7 +395,7 @@ FOR EACH STEP
   Only verified critical or important findings may block.
   Fable classifies every finding ACCEPT, REJECT, or COUNTER.
   Accepted blocking finding → fresh Opus fixer → validation → same Sol thread.
-  STEP APPROVED → proceed.
+  STEP APPROVED or no independently verified critical/important finding remains → proceed.
   Three failed cycles or unresolved critical finding → ask user.
 
 FINALIZE
