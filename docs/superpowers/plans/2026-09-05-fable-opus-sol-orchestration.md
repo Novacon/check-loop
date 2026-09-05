@@ -16,6 +16,8 @@
 - Implementer and fixer: Agent tool `model: "opus"`; no Sonnet implementation path.
 - Reviewer: `gpt-5.6-sol` with `xhigh` effort through the existing read-only App Server transport.
 - Sol is the only dedicated execution reviewer; Fable adjudicates every Sol finding.
+- Every Sol concern carries severity, verification status, claim, exact evidence, impact, failure condition, and recommended correction.
+- Only independently checked `VERIFIED` critical or important findings may block; model agreement is not evidence.
 - Never silently downgrade a required model.
 - Never stash, discard, stage, commit, or push unrelated work.
 - Never automatically commit or push before final user approval.
@@ -174,6 +176,10 @@ test("plan refinement is owned by Fable against Sol", () => {
   assert.match(body, /ACCEPT/);
   assert.match(body, /REJECT/);
   assert.match(body, /COUNTER/);
+  assert.match(body, /VERIFIED \| INFERENCE \| UNVERIFIED/);
+  assert.match(body, /Evidence: exact plan quote, file:line, or command output/);
+  assert.match(body, /Only VERIFIED.*may block/is);
+  assert.match(body, /independently verify/i);
   assert.doesNotMatch(body, /Codex CLI default/);
 });
 ```
@@ -204,7 +210,7 @@ argument-hint: [plan-path]
 
 Keep the existing App Server invocation syntax and JSON parsing contract. Rewrite the body as a concise imperative workflow with these required sections:
 
-```markdown
+````markdown
 # Fable–Sol plan refinement
 
 Use Fable as plan owner and GPT-5.6 Sol as an adversarial peer. Improve the plan rather than maximizing agreement.
@@ -223,7 +229,20 @@ Use Fable as plan owner and GPT-5.6 Sol as an adversarial peer. Improve the plan
 4. Apply only accepted changes to the plan file.
 5. Send the adjudication and complete revised plan through the same thread ID.
 6. Stop on approval or after 40 rounds; report unresolved disagreements at the limit.
+
+Require every concern to use this complete contract:
+
+```text
+F1 [critical | important | minor] [VERIFIED | INFERENCE | UNVERIFIED]
+Claim:
+Evidence: exact plan quote, file:line, or command output
+Impact:
+Failure condition:
+Recommended correction:
 ```
+
+State that only independently checked `VERIFIED` critical or important findings may change or block the plan. Treat `INFERENCE` and `UNVERIFIED` items as non-blocking questions; supply missing context and request another review instead of guessing.
+````
 
 Retain the exact initial and continuation prompt contracts, including numbered finding IDs, toolchain-marker exclusions, and plan-only scope. Replace generic “Claude” and “Codex” role labels with “Fable” and “Sol.”
 
@@ -283,6 +302,9 @@ test("execution uses Fable, Opus implementers, and Sol review only", () => {
   assert.doesNotMatch(body, /git stash/);
   assert.doesNotMatch(body, /git add -A/);
   assert.doesNotMatch(body, /safeStripeRedirect|NextResponse|Supabase|Result<T>/);
+  assert.match(body, /VERIFIED \| INFERENCE \| UNVERIFIED/);
+  assert.match(body, /Only VERIFIED.*may block/is);
+  assert.match(body, /independently verify/i);
 });
 
 test("implementer is Opus-only and leaves git ownership to Fable", () => {
@@ -368,6 +390,9 @@ FOR EACH STEP
   Fable runs repository-native validation.
   Fable computes the step-scoped diff from the snapshot and filters secrets.
   Sol reviews requirements + diff + validation in one persistent thread.
+  Sol must emit the complete VERIFIED | INFERENCE | UNVERIFIED evidence contract.
+  Fable independently checks cited plan text, file:line evidence, or command output.
+  Only verified critical or important findings may block.
   Fable classifies every finding ACCEPT, REJECT, or COUNTER.
   Accepted blocking finding → fresh Opus fixer → validation → same Sol thread.
   STEP APPROVED → proceed.
@@ -425,6 +450,8 @@ test("README documents the v4 orchestration contract", () => {
   assert.match(body, /Opus 5/);
   assert.match(body, /GPT-5\.6 Sol/);
   assert.match(body, /Fable.*Opus.*Sol/s);
+  assert.match(body, /evidence gate/i);
+  assert.match(body, /No evidence, no blocking finding/i);
   assert.doesNotMatch(body, /gpt-5\.4-codex|sonnet for pure frontend|three review layers/i);
 });
 ```
@@ -450,7 +477,7 @@ Fixes:     Fable adjudication → fresh Opus 5 fixer → validation → same Sol
 Final:     full verification → Sol full-diff review → user approval → commit/push
 ```
 
-Update prerequisites to Claude Code 2.1.255 or later because the `fable` alias requires it. State that Sol is pinned while Fable and Opus use Claude Code aliases. Remove three-review-layer, Sonnet frontend, step-commit, stash, and PMO-specific statements. Keep installation commands and transport explanation.
+Update prerequisites to Claude Code 2.1.255 or later because the `fable` alias requires it. State that Sol is pinned while Fable and Opus use Claude Code aliases. Document the evidence gate as “No evidence, no blocking finding,” including the `VERIFIED`, `INFERENCE`, and `UNVERIFIED` categories and Fable's independent verification responsibility. Remove three-review-layer, Sonnet frontend, step-commit, stash, and PMO-specific statements. Keep installation commands and transport explanation.
 
 - [ ] **Step 4: Run the README test and full contract suite**
 
@@ -540,6 +567,9 @@ Launch an interactive Claude session from that temporary repository with the loc
 - Setup identifies `gpt-5.6-sol` at `xhigh`.
 - The first Sol response returns a thread ID.
 - Any follow-up uses the same thread ID.
+- Any Sol concern uses the complete evidence contract.
+- Fable checks cited plan or repository evidence before accepting a finding.
+- `INFERENCE` and `UNVERIFIED` items remain non-blocking questions.
 - The loop ends only on exact approval or reports its bounded unresolved state.
 
 Do not retain the temporary repository after recording the result.
@@ -553,6 +583,8 @@ In a fresh disposable repository containing committed `greeting.txt` with `hello
 - The Opus agent changes only `greeting.txt` and does not stage or commit.
 - Fable validates the exact file content.
 - Sol reviews the step diff and validation evidence.
+- Any Sol concern uses the complete evidence contract.
+- Fable independently checks its cited file, plan, or command evidence before accepting it.
 - No Opus reviewer or Sonnet implementation agent is launched.
 - No commit or push occurs before the user approval prompt.
 

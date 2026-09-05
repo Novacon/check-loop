@@ -38,9 +38,9 @@ If an account or organization does not allow one of these models, stop with the 
 2. Read the plan and the original user request.
 3. Start one persistent GPT-5.6 Sol App Server thread.
 4. Send the original request and full plan to Sol for adversarial review.
-5. Require numbered, evidence-based concerns or the exact `PLAN APPROVED` signal.
-6. Have Fable classify every concern as `ACCEPT`, `REJECT`, or `COUNTER`.
-7. Update the plan only for accepted changes. Explain rejected and countered findings to Sol.
+5. Require numbered concerns using the evidence contract or the exact `PLAN APPROVED` signal.
+6. Have Fable independently verify every blocking claim, then classify it as `ACCEPT`, `REJECT`, or `COUNTER`.
+7. Update the plan only for accepted, verified changes. Explain rejected and countered findings to Sol.
 8. Continue the same Sol thread until approval or the round limit.
 9. Report meaningful plan changes, successfully defended decisions, and unresolved disagreements.
 
@@ -71,6 +71,29 @@ The plan file remains the output and source of truth. This skill does not implem
 Sol is the only dedicated reviewer during execution. Remove the separate Opus spec-compliance and code-quality reviewer stages. Fable remains responsible for interpreting the plan, checking scope, selecting validation, and adjudicating Sol's findings.
 
 Treat agreement as insufficient evidence. A Sol finding blocks only when it identifies an observable contract violation, correctness defect, security problem, unsupported assumption, or maintainability risk grounded in the repository. Minor preferences never block a step.
+
+## Evidence gate
+
+Every Sol concern must contain:
+
+```text
+F1 [critical | important | minor] [VERIFIED | INFERENCE | UNVERIFIED]
+Claim:
+Evidence: exact plan quote, file:line, or command output
+Impact:
+Failure condition:
+Recommended correction:
+```
+
+- `VERIFIED` means the cited source directly supports the claim.
+- `INFERENCE` means the cited facts support a conclusion that has not been reproduced.
+- `UNVERIFIED` means required evidence is unavailable or missing.
+- Only verified critical or important findings may block a plan or implementation step.
+- Inferences and unverified items remain non-blocking questions until Fable obtains and checks the missing evidence.
+- Fable must inspect every cited source independently. Model agreement, confidence language, and repeated assertions do not count as evidence.
+- Reject invented, stale, mismatched, or inaccessible citations and send the correction through the same Sol thread.
+- Supply missing context and request a new review instead of allowing either model to guess.
+- Separate verified defects from unresolved hypotheses in every round summary and final report.
 
 ## Repository standards
 
@@ -121,9 +144,10 @@ Before release:
 4. Verify both skills declare `model: fable` and `effort: xhigh`.
 5. Verify every implementer/fixer dispatch specifies `model: "opus"` and no Sonnet implementation path remains.
 6. Verify removed reviewer files have no references.
-7. Run the plugin locally with `claude --plugin-dir` and confirm both skills are discovered.
-8. Exercise a disposable plan through plan review to confirm Sol thread creation, continuation, and approval parsing.
-9. Exercise one disposable implementation step to confirm the Opus dispatch contract, validation handoff, Sol review, and user approval gate.
+7. Verify both Sol prompt contracts require the complete evidence format and prohibit unsupported blocking findings.
+8. Run the plugin locally with `claude --plugin-dir` and confirm both skills are discovered.
+9. Exercise a disposable plan through plan review to confirm Sol thread creation, continuation, evidence handling, and approval parsing.
+10. Exercise one disposable implementation step to confirm the Opus dispatch contract, validation handoff, evidence-gated Sol review, and user approval gate.
 
 ## Non-goals
 
