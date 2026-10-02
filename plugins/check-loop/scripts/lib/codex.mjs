@@ -133,13 +133,22 @@ function extractTurnId(message) {
   return null;
 }
 
+function getEffectiveThreadSettings(value) {
+  const thread = value?.thread ?? value;
+  return {
+    model: thread?.model ?? null,
+    effort: thread?.reasoningEffort ?? null
+  };
+}
+
 export function assertEffectiveThreadSettings(thread, expected = {}) {
-  if (expected.model && thread?.model !== expected.model) {
-    throw new Error(`Unexpected effective model: expected ${expected.model}, received ${thread?.model ?? "unknown"}.`);
+  const effective = getEffectiveThreadSettings(thread);
+  if (expected.model && effective.model !== expected.model) {
+    throw new Error(`Unexpected effective model: expected ${expected.model}, received ${effective.model ?? "unknown"}.`);
   }
-  if (expected.effort && thread?.reasoningEffort !== expected.effort) {
+  if (expected.effort && effective.effort !== expected.effort) {
     throw new Error(
-      `Unexpected effective reasoning effort: expected ${expected.effort}, received ${thread?.reasoningEffort ?? "unknown"}.`
+      `Unexpected effective reasoning effort: expected ${expected.effort}, received ${effective.effort ?? "unknown"}.`
     );
   }
 }
@@ -829,6 +838,10 @@ export async function runAppServerReview(cwd, options = {}) {
       threadName: options.threadName
     });
     const sourceThreadId = thread.thread.id;
+    const effective = getEffectiveThreadSettings(thread);
+    // Native review may inherit a separate review_model that thread/start does
+    // not report. Only an explicit override is a known effective review model.
+    const reviewModel = options.model ?? null;
     emitProgress(options.onProgress, `Thread ready (${sourceThreadId}).`, "starting", {
       threadId: sourceThreadId
     });
@@ -845,7 +858,7 @@ export async function runAppServerReview(cwd, options = {}) {
         }),
       {
         onProgress: options.onProgress,
-        expectedModel: options.model,
+        expectedModel: reviewModel,
         onResponse(response, state) {
           if (response.reviewThreadId) {
             state.threadIds.add(response.reviewThreadId);
@@ -862,6 +875,8 @@ export async function runAppServerReview(cwd, options = {}) {
       threadId: turnState.threadId,
       sourceThreadId,
       turnId: turnState.turnId,
+      model: reviewModel,
+      effort: effective.effort,
       reviewText: turnState.reviewText,
       reasoningSummary: turnState.reasoningSummary,
       turn: turnState.finalTurn,
@@ -879,6 +894,7 @@ export async function runAppServerTurn(cwd, options = {}) {
 
   return withAppServer(cwd, async (client) => {
     let threadId;
+    let effective;
 
     if (options.resumeThreadId) {
       emitProgress(options.onProgress, `Resuming thread ${options.resumeThreadId}.`, "starting");
@@ -889,15 +905,18 @@ export async function runAppServerTurn(cwd, options = {}) {
         ephemeral: false
       });
       threadId = response.thread.id;
+      effective = getEffectiveThreadSettings(response);
     } else {
       emitProgress(options.onProgress, "Starting Codex task thread.", "starting");
       const response = await startThread(client, cwd, {
         model: options.model,
+        effort: options.effort,
         sandbox: options.sandbox,
         ephemeral: options.persistThread ? false : true,
         threadName: options.persistThread ? options.threadName : options.threadName ?? null
       });
       threadId = response.thread.id;
+      effective = getEffectiveThreadSettings(response);
     }
 
     emitProgress(options.onProgress, `Thread ready (${threadId}).`, "starting", {
@@ -916,17 +935,19 @@ export async function runAppServerTurn(cwd, options = {}) {
         client.request("turn/start", {
           threadId,
           input: buildTurnInput(prompt),
-          model: options.model ?? null,
-          effort: options.effort ?? null,
+          model: effective.model,
+          effort: effective.effort,
           outputSchema: options.outputSchema ?? null
         }),
-      { onProgress: options.onProgress, expectedModel: options.model }
+      { onProgress: options.onProgress, expectedModel: effective.model }
     );
 
     return {
       status: buildResultStatus(turnState),
       threadId,
       turnId: turnState.turnId,
+      model: effective.model,
+      effort: effective.effort,
       finalMessage: turnState.lastAgentMessage,
       reasoningSummary: turnState.reasoningSummary,
       turn: turnState.finalTurn,

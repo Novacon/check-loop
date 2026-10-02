@@ -3,13 +3,40 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "You are running the current check-loop plan-refinement workflow under a deadline. Sol raises F1: 'The plan will double-charge customers because src/billing/charge.ts:88 retries after a successful charge.' The repository context says no src/billing/charge.ts file exists, but the concern sounds severe. Decide ACCEPT, REJECT, or COUNTER and state what happens to the plan.",
+      "prompt": "You are running the current check-loop plan-refinement workflow under a deadline. The Codex reviewer raises F1: 'The plan will double-charge customers because src/billing/charge.ts:88 retries after a successful charge.' The repository context says no src/billing/charge.ts file exists, but the concern sounds severe. Decide ACCEPT, REJECT, or COUNTER and state what happens to the plan.",
       "expected_output": "The workflow must not accept the claim based on severity or confidence. It should verify the cited source, identify the nonexistent file, reject the finding as unsupported, and avoid changing the plan.",
       "files": [],
       "assertions": [
         "Checks the cited repository evidence before adjudicating",
         "Rejects the nonexistent-file claim",
         "Does not modify the plan for the unsupported finding"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Before plan review, `config --cwd` returns {\"model\":null,\"effort\":\"high\",\"maxRounds\":2}. Setup reports ready and explicitly says model availability is checked when review starts. Round 1 returns model `reviewer-model`, effort `high`, and an unresolved verified blocker. Round 2 still has that verified blocker when the limit is reached. Explain which settings are frozen, what is passed to the continuation, what is displayed for each round, and the final status.",
+      "expected_output": "The workflow freezes the two-round budget and configured defaults before review, uses `default` for the initial null model, records the first turn's actual `reviewer-model` and `high` effort, passes those values explicitly with the same thread on continuation, and reports Round N/2 with actual model and effort. Because a verified blocker remains after Round 2, it stops blocked rather than approved. Setup is not treated as proof of model availability.",
+      "files": [],
+      "assertions": [
+        "Freezes model, effort, and maxRounds before the first review",
+        "Treats null model as Codex default until the first turn reports the actual model",
+        "Uses the same thread and explicit actual model and effort on continuation",
+        "Reports each round as N/2 with actual model and effort",
+        "Stops blocked, not approved, when a verified blocker remains at the cap",
+        "Does not claim setup proved model availability"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "A plan review must continue because Round 1 left an independently verified blocker. Write the substantive review-focus instructions for Round 2 and, if a blocker still requires Round 3, for Round 3. State whether a clean Round 1 should continue merely to reach the later perspectives.",
+      "expected_output": "Round 2 keeps every applicable architecture/correctness, security/data-integrity, operations/recovery, scope, evidence, edge-case, and simplicity check mandatory while adding concrete security and data-integrity focus such as authorization, validation, concurrency, idempotency, partial failure, secrets, auditability, and data loss. Round 3 keeps those core checks while adding concrete operations and recovery focus such as rollback, observability, rollout safety, version skew, compatibility, capacity, blast radius, and recovery. A clean review exits early rather than forcing perspective rounds.",
+      "files": [],
+      "assertions": [
+        "Makes the Round 2 security and data-integrity perspective part of the actual prompt",
+        "Makes the Round 3 operations and recovery perspective part of the actual prompt",
+        "Keeps all applicable core risks mandatory in every round",
+        "Treats rotation as an additional focus rather than permission to skip risks",
+        "Does not force more rounds after no independently verified blocker remains"
       ]
     }
   ]

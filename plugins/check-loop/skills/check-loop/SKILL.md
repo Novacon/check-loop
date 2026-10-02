@@ -6,11 +6,11 @@ effort: xhigh
 argument-hint: [plan-path]
 ---
 
-# Fable-Sol plan refinement
+# Fable-Codex plan refinement
 
 ## Overview
 
-Use Fable as plan owner and GPT-5.6 Sol as an adversarial peer. Improve the plan rather than maximizing agreement.
+Use Fable as plan owner and the configured Codex reviewer as an adversarial peer. Improve the plan rather than maximizing agreement.
 
 **Core principle:** No evidence, no blocking finding. A confident reviewer statement is still only a claim until Fable checks its source.
 
@@ -26,50 +26,72 @@ Read:
 
 Keep the original plan content for the final comparison.
 
-## Required models
+## Reviewer configuration and preflight
 
-This skill's frontmatter selects Fable at `xhigh` for the current turn. Stop if Claude Code reports that `fable` was rejected, unavailable, or replaced.
+This skill's frontmatter selects Fable at `xhigh` for the current turn. Stop if Claude Code reports that `fable` was rejected, unavailable, or replaced. Reviewer settings do not change Fable's role.
 
-Run the transport preflight:
+Before starting review, resolve settings for the current working directory:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" setup --cwd "$(pwd)"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" config --cwd "$(pwd)"
 ```
 
-Proceed only when it reports:
+The command prints one JSON object:
 
-```text
-Model: gpt-5.6-sol
-Reasoning effort: xhigh
-Status: ready
+```json
+{"model":null,"effort":null,"maxRounds":6}
 ```
 
-## Sol transport
+`null` means inherit the corresponding Codex default. `maxRounds` is already resolved from CLI/project/user/default precedence and must be between 1 and 40. Freeze all three values for this invocation; do not re-resolve them between rounds. Use the literal `default` for a null model or effort when constructing CLI calls.
 
-Start the first review:
+Run the transport preflight with the frozen settings:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" setup \
+  --cwd "$(pwd)" \
+  --model "MODEL_SETTING_OR_default" \
+  --effort "EFFORT_SETTING_OR_default" \
+  --max-rounds MAX_ROUNDS
+```
+
+Proceed only when setup reports the Codex CLI installed, authentication ready, and the chosen model, effort, and maximum review rounds correctly. Setup does not test model availability; the first review turn does. If an explicit model or effort is unavailable, rejected, or silently substituted, stop rather than changing reviewers.
+
+## Codex transport
+
+Start round 1 with the frozen setting values:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn \
   --cwd "$(pwd)" \
-  --prompt "PROMPT"
-```
-
-Continue every later round with the returned thread ID:
-
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn \
-  --cwd "$(pwd)" \
-  --thread-id THREAD_ID \
+  --model "MODEL_SETTING_OR_default" \
+  --effort "EFFORT_SETTING_OR_default" \
   --prompt "PROMPT"
 ```
 
 The command prints JSON:
 
 ```json
-{"threadId":"...","response":"..."}
+{"threadId":"...","response":"...","model":"...","effort":"...","status":0,"error":null}
 ```
 
-Keep one thread for the entire refinement loop.
+Record the returned `model` and `effort` as the actual reviewer settings. Show them with every round result. Continue every later round with the returned thread ID and the same explicit actual values when non-null; if a returned value is null, continue with literal `default` and report it as `Codex default (not reported)` rather than inventing a value:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn \
+  --cwd "$(pwd)" \
+  --thread-id THREAD_ID \
+  --model "ACTUAL_MODEL_OR_default" \
+  --effort "ACTUAL_EFFORT_OR_default" \
+  --prompt "PROMPT"
+```
+
+Keep one read-only thread for the entire refinement loop. A continuation that reports a different non-null model or effort is a configuration failure, not a valid review round.
+
+### Review-result gate
+
+Before adjudication, require a zero command exit, `status: 0`, `error: null`, and a substantive response that follows the requested finding or approval format. A failed command, empty or malformed response, or authentication error is an incomplete review, not "no findings." Preserve the plan, report the actionable error, and stop; do not manufacture a substitute Codex verdict.
+
+Preserve Codex's exact citations and uncertainty labels when reporting findings, then record Fable's independent adjudication separately. A completed transport is not itself plan approval.
 
 ## Evidence contract
 
@@ -98,16 +120,36 @@ Reject invented, stale, mismatched, or inaccessible citations. Supply missing co
 
 ## Secret handling
 
-Before sending any payload to Sol, inspect it and redact secret or credential values. Omit contents from `*.env*`, `*.secret*`, `*credentials*`, `**/secrets/**`, ignored environment files, binary payloads, and dependency caches. Name an omitted path only when Sol needs the omission context; never include its content.
+Before sending any payload to Codex, inspect it and redact secret or credential values. Omit contents from `*.env*`, `*.secret*`, `*credentials*`, `**/secrets/**`, ignored environment files, binary payloads, and dependency caches. Name an omitted path only when Codex needs the omission context; never include its content.
 
-## Initial Sol prompt
+## Review focus by round
+
+Every review round must check all applicable core risks: architecture and correctness, security and data integrity, operations and recovery, scope, evidence quality, edge cases, and unnecessary complexity. The rotating perspective is an additional focus, never permission to skip another applicable risk:
+
+| Round | Additional focus |
+|---|---|
+| 1 | Architecture and correctness: design flaws, broken assumptions, ambiguous requirements, stress cases, and whether the plan solves the requested problem simply. |
+| 2 | Security and data integrity: authorization, validation, injection, concurrency, idempotency, partial failure, secrets, auditability, and data loss. |
+| 3+ | Operations and recovery: rollback, observability, rollout safety, version skew, compatibility, capacity, blast radius, and recovery. Deepen these angles on later rounds rather than becoming generic. |
+
+Rotation does not require an extra round. Stop as soon as the stopping rules are met.
+
+## Initial Codex prompt
 
 Send the original request and full plan using this contract:
 
 ```text
-Act as GPT-5.6 Sol, the adversarial peer reviewing an implementation plan owned by Fable.
+Act as Codex, the adversarial peer reviewing an implementation plan owned by Fable.
 
-Review only the implementation plan. Find genuine correctness risks, unsupported assumptions, missing edge cases, unnecessary complexity, and simpler approaches. Do not implement code. Do not invent repository facts.
+This is Round 1 of MAX_ROUNDS.
+Configured reviewer setting: model MODEL_SETTING_OR_DEFAULT; effort EFFORT_SETTING_OR_DEFAULT.
+
+Review only the implementation plan. Do not implement code or invent repository facts.
+
+Mandatory in every round: check all applicable architecture and correctness, security and data-integrity, operations and recovery, scope, evidence quality, edge cases, and unnecessary-complexity risks.
+
+Additional focus for Round 1 -- architecture and correctness:
+Hunt for design flaws, broken assumptions, ambiguous requirements, hand-waved hard parts, stress failures, and plans that solve the wrong problem or use needless complexity. This focus does not narrow the mandatory checks above.
 
 Evidence rules:
 - Every concern must use the complete finding format below.
@@ -157,7 +199,7 @@ For every finding:
 
 ### Complete example
 
-Sol reports:
+Codex reports:
 
 ```text
 F4 [critical] [VERIFIED]
@@ -178,10 +220,24 @@ The `critical` label does not override missing evidence.
 
 ## Continuation prompt
 
-After adjudication, update the plan and continue the same thread:
+Continue only when the stopping rules require another review. Select and insert the complete additional-focus stanza for the current round; do not merely report its label:
+
+- Round 2: `Focus especially on authentication and authorization gaps, validation and injection, race conditions and concurrent writes, idempotency, partial-failure recovery, secret handling, audit trails, and data-loss scenarios under crash or retry. Look for issues that pass functional review but fail under adversarial or unlucky conditions.`
+- Round 3+: `Focus especially on rollback safety, observability and metrics, gradual rollout, version skew, backwards compatibility, capacity and blast radius, on-call diagnosis, and recovery after failure. On later rounds, deepen these operations and recovery angles rather than becoming generic.`
+
+The continuation sent to Codex must therefore contain substantive focus text in this template:
 
 ```text
 Fable independently checked every cited source.
+
+This is Round N of MAX_ROUNDS.
+Frozen reviewer: model ACTUAL_MODEL_OR_DEFAULT; effort ACTUAL_EFFORT_OR_DEFAULT.
+
+Mandatory in every round: check all applicable architecture and correctness, security and data-integrity, operations and recovery, scope, evidence quality, edge cases, and unnecessary-complexity risks.
+
+Additional focus for Round N -- FOCUS_LABEL:
+FULL_FOCUS_TEXT_FOR_THIS_ROUND
+This focus does not narrow the mandatory checks above.
 
 Adjudication:
 - F1: ACCEPTED -- verified evidence and reason
@@ -207,25 +263,29 @@ PLAN APPROVED -- No remaining concerns.
 
 ## Loop and stopping rules
 
-Conclude refinement when Sol approves or when no independently verified critical or important finding remains after adjudication. A rejected, minor, inferred, or unverified item does not block convergence; retain it in the appropriate final-report category. Never waive a verified blocker merely because the round limit was reached.
+Count each completed Codex response as one review round. Conclude refinement immediately when Codex approves or when no independently verified critical or important finding remains after adjudication. A rejected, minor, inferred, or unverified item does not block convergence; retain it in the appropriate final-report category. Never run another round only to reach a different focus, and never waive a verified blocker because the frozen limit was reached.
 
 After each round, report:
 
 ```text
-Round N: X concerns
+Round N/MAX_ROUNDS — Codex model: ACTUAL_MODEL; effort: ACTUAL_EFFORT
+Concerns: X
 - Accepted: F...
 - Rejected: F...
 - Countered: F...
 - Unverified questions: F...
 ```
 
-At the round limit, conclude only if no independently verified critical or important finding remains. Otherwise preserve the current plan and adjudication record, mark refinement blocked, list the unresolved verified disagreements separately from unverified hypotheses, and ask the user how to resolve the verified blocker.
+Do not begin a round beyond the frozen `maxRounds`. At the cap, conclude only if no independently verified critical or important finding remains. Otherwise preserve the current plan and adjudication record, mark refinement `BLOCKED AT ROUND LIMIT`, list unresolved verified disagreements separately from unverified hypotheses, and ask the user how to resolve the verified blocker. Never describe a capped result with blockers as approved.
+
+If the user cancels, stop the current invocation, leave the plan and adjudication record in their present state, and report `CANCELLED — NOT APPROVED`. Cancellation creates no durable resume state and is not convergence.
 
 ## Final report
 
 Report:
 
 - Rounds completed and convergence status.
+- Frozen round limit and actual Codex model and effort.
 - Verified changes made to the plan.
 - Decisions Fable defended successfully.
 - Unresolved verified disagreements.
@@ -242,13 +302,13 @@ The updated plan file is the source of truth.
 | Treating two-model agreement as proof | Inspect the cited source. |
 | Blocking on a plausible race or edge case | Mark it inference until reproduced or directly supported. |
 | Trusting a file:line without opening it | Read the current file and confirm line drift. |
-| Asking Sol to rewrite the plan | Fable owns plan decisions and edits. |
+| Asking Codex to rewrite the plan | Fable owns plan decisions and edits. |
 
 ## Red flags
 
 Stop adjudication when reasoning includes:
 
-- "Sol probably checked it."
+- "Codex probably checked it."
 - "Better safe than sorry."
 - "Both models agree."
 - "The deadline means we should accept it."

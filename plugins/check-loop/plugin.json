@@ -1,7 +1,7 @@
 {
   "name": "check-loop",
-  "version": "4.0.0",
-  "description": "Fable-orchestrated plan refinement, research peer review, and execution with Opus implementers and GPT-5.6 Sol review",
+  "version": "4.1.0",
+  "description": "Fable-orchestrated plan refinement, research, and execution with Opus implementers and configurable Codex review",
   "author": {
     "name": "lordknows13"
   },

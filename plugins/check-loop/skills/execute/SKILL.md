@@ -10,7 +10,7 @@ argument-hint: [plan-path]
 
 ## Overview
 
-Fable owns the plan, review scope, validation, and decisions. A fresh Opus subagent implements or fixes one bounded step. GPT-5.6 Sol reviews every step in one persistent thread.
+Fable owns the plan, review scope, validation, and decisions. A fresh Opus subagent implements or fixes one bounded step. The configured Codex reviewer reviews every step in one persistent read-only thread.
 
 **Core principle:** No evidence, no blocking finding. Review output is a claim until Fable checks its cited source.
 
@@ -30,13 +30,13 @@ FOR EACH STEP
   Define the step contract and take a working-tree snapshot.
   Dispatch one fresh Opus implementer.
   Inspect the actual changes and run repository-native validation.
-  Send the step contract, filtered diff, context, and results to Sol.
+  Send the step contract, filtered diff, context, and results to Codex.
   Independently verify and adjudicate every finding.
   For an accepted blocking finding, dispatch a fresh Opus fixer and repeat.
 
 FINALIZE
   Run full repository verification and the changed surface.
-  Send a sanitized final review packet in the persistent Sol thread.
+  Send a sanitized final review packet in the persistent Codex thread.
   Independently verify its findings.
   Present the evidence and adjudication log.
   Ask before any commit or push.
@@ -54,23 +54,29 @@ Read:
 
 Lock the plan for execution. A wrong or impossible step requires user input; do not silently rewrite it.
 
-### Required models
+### Required models and reviewer configuration
 
-This skill's frontmatter selects Fable at `xhigh`. Stop if Claude Code reports that `fable` was rejected, unavailable, or replaced.
+This skill's frontmatter selects Fable at `xhigh`. Stop if Claude Code reports that `fable` was rejected, unavailable, or replaced. Reviewer settings do not change Fable or Opus.
+
+Resolve reviewer settings for the current working directory:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" config --cwd "$(pwd)"
+```
+
+The JSON result contains `model`, `effort`, and `maxRounds`. Freeze the model and effort for this execution. Use literal `default` for a null value. `maxRounds` governs plan and research review loops; report that execution instead keeps its fixed cap of three reviewer-driven fix attempts so the setting is not silently misapplied.
 
 Run:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" setup --cwd "$(pwd)"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" setup \
+  --cwd "$(pwd)" \
+  --model "MODEL_SETTING_OR_default" \
+  --effort "EFFORT_SETTING_OR_default" \
+  --max-rounds CONFIGURED_MAX_ROUNDS
 ```
 
-Proceed only when it reports:
-
-```text
-Model: gpt-5.6-sol
-Reasoning effort: xhigh
-Status: ready
-```
+Proceed only when setup reports the Codex CLI installed, authentication ready, and the chosen settings correctly. Setup does not test model availability; the first review turn does. If an explicit model or effort is unavailable, rejected, or silently substituted, stop rather than changing reviewers.
 
 ### Working-tree ownership
 
@@ -83,22 +89,26 @@ If any working-tree changes are present, ask the user to choose:
 
 Keep the baseline paths and diff separate from execution-produced changes, even when the user authorizes inclusion. Never present baseline work as Opus output or include it in a commit unless the user's choice explicitly covers it. Never hide, discard, stage, or silently include existing work. Keep all execution changes uncommitted until final approval.
 
-Before sending any plan, instruction, diff, validation output, or follow-up to Sol, inspect it and redact secret or credential values. Omit contents from `*.env*`, `*.secret*`, `*credentials*`, `**/secrets/**`, ignored environment files, binary payloads, and dependency caches. Name an omitted path only when Sol needs the omission context; never include its content.
+Before sending any plan, instruction, diff, validation output, or follow-up to Codex, inspect it and redact secret or credential values. Omit contents from `*.env*`, `*.secret*`, `*credentials*`, `**/secrets/**`, ignored environment files, binary payloads, and dependency caches. Name an omitted path only when Codex needs the omission context; never include its content.
 
-## Start Sol supervision
+## Start Codex supervision
 
-Start one thread:
+Start one thread with the frozen configured values:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn \
   --cwd "$(pwd)" \
+  --model "MODEL_SETTING_OR_default" \
+  --effort "EFFORT_SETTING_OR_default" \
   --prompt "PROMPT"
 ```
 
 Initial prompt:
 
 ```text
-Act as GPT-5.6 Sol, the adversarial reviewer for an approved implementation plan owned by Fable.
+Act as Codex, the adversarial reviewer for an approved implementation plan owned by Fable.
+
+Configured reviewer setting: model MODEL_SETTING_OR_DEFAULT; effort EFFORT_SETTING_OR_DEFAULT.
 
 Review only. Do not write code. Use the repository's actual instructions and conventions; do not impose unrelated framework preferences. Ignore agent-framework metadata that is not an implementation requirement.
 
@@ -132,14 +142,26 @@ RELEVANT_INSTRUCTIONS
 Confirm that you are ready to review Step 1.
 ```
 
-Save the returned `threadId`. Continue that thread for every step:
+The command prints JSON:
+
+```json
+{"threadId":"...","response":"...","model":"...","effort":"...","status":0,"error":null}
+```
+
+For the initial acknowledgment and every step, fix, or final review, require a zero command exit, `status: 0`, `error: null`, and substantive output appropriate to that phase. A failed, empty, or malformed review is incomplete—not approval or "no findings." Preserve the working tree, report the actionable error, and stop; do not substitute Fable's own review for missing Codex output. Preserve the reviewer's citations and uncertainty labels, keeping Fable's adjudication separate.
+
+Save the returned `threadId`, `model`, and `effort`. The returned model and effort are the actual settings: show them in step and final reports. Continue the same thread for every step, passing those actual values explicitly when non-null. If a returned value is null, use literal `default` and report `Codex default (not reported)` rather than inventing a value:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn \
   --cwd "$(pwd)" \
   --thread-id THREAD_ID \
+  --model "ACTUAL_MODEL_OR_default" \
+  --effort "ACTUAL_EFFORT_OR_default" \
   --prompt "PROMPT"
 ```
+
+A continuation that reports a different non-null model or effort is a configuration failure, not a valid review.
 
 ## Execute each step
 
@@ -190,15 +212,15 @@ Fable must:
 4. Exercise the changed surface when a runtime is available.
 5. Record exact command output, failures, and skipped checks.
 
-Fix validation failures before external review. Give each fresh Opus fixer the exact failure output and acceptance criteria. After three unsuccessful fixes, stop and ask the user.
+Fix validation failures before external review. Give each fresh Opus fixer the exact failure output and acceptance criteria. After three unsuccessful validation-fix attempts, stop and ask the user.
 
 ### 4. Build the review packet
 
 Compute the step-scoped diff from the pre-step snapshot. Include new files. Do not include secrets, credentials, binary payloads, dependency caches, or unrelated changes.
 
-Never place contents from files matching `*.env*`, `*.secret*`, `*credentials*`, or `**/secrets/**` in a prompt. Tell Sol not to open those paths.
+Never place contents from files matching `*.env*`, `*.secret*`, `*credentials*`, or `**/secrets/**` in a prompt. Tell Codex not to open those paths.
 
-Send this packet in the persistent Sol thread:
+Send this packet in the persistent Codex thread:
 
 ```text
 Review Step N of M.
@@ -253,7 +275,7 @@ For every finding:
 
 `INFERENCE`, `UNVERIFIED`, and `minor` findings are nonblocking questions or observations. Model agreement, severity, confidence, and repetition are not evidence.
 
-Reject invented, stale, mismatched, or inaccessible citations. Supply missing context and ask Sol to review again instead of guessing.
+Reject invented, stale, mismatched, or inaccessible citations. Supply missing context and ask Codex to review again instead of guessing.
 
 Continue the thread with:
 
@@ -273,7 +295,7 @@ Do not repeat a rejected concern without new evidence.
 
 ### 6. Fix or approve
 
-Complete the step when Sol returns `STEP APPROVED` or when no independently verified critical or important finding remains after adjudication. Sol's refusal to approve because of a rejected, minor, inferred, or unverified item does not block completion; record the item in its nonblocking category.
+Complete the step when Codex returns `STEP APPROVED` or when no independently verified critical or important finding remains after adjudication. Codex refusing to approve because of a rejected, minor, inferred, or unverified item does not block completion; record the item in its nonblocking category.
 
 For each accepted or countered blocking finding:
 
@@ -281,9 +303,9 @@ For each accepted or countered blocking finding:
 2. Inspect the fix.
 3. Re-run step validation.
 4. Recompute the filtered step diff.
-5. Re-submit it in the same Sol thread.
+5. Re-submit it in the same Codex thread.
 
-Stop after three unsuccessful review/fix cycles. Ask the user to resolve remaining verified critical or important disagreements. Do not escalate unsupported hypotheses as defects.
+Dispatch at most three reviewer-driven Opus fixers for a step. If verified critical or important findings remain after the third fix attempt, stop and ask the user to resolve them. Do not escalate unsupported hypotheses as defects.
 
 Report:
 
@@ -291,7 +313,7 @@ Report:
 Step N: COMPLETE
 Implementation: Opus
 Validation: commands and outcomes
-Sol: STEP APPROVED [after N fix rounds] | no verified blockers after adjudication
+Codex (model ACTUAL_MODEL; effort ACTUAL_EFFORT): STEP APPROVED [after N fix attempts] | no verified blockers after adjudication
 Adjudication: accepted F... | rejected F... | countered F...
 Unverified questions: F... or none
 ```
@@ -305,7 +327,7 @@ After all steps complete:
 1. Inspect the complete execution-scoped diff from the recorded baseline against the locked plan.
 2. Run the repository's full applicable validation.
 3. Exercise the final changed surface.
-4. Send a sanitized final review packet in the same persistent Sol thread. Include the execution-scoped diff from the recorded baseline, changed-path list, exact validation output, and runtime evidence. Exclude unrelated baseline changes and all protected content listed above.
+4. Send a sanitized final review packet in the same persistent Codex thread. Include the execution-scoped diff from the recorded baseline, changed-path list, exact validation output, and runtime evidence. Exclude unrelated baseline changes and all protected content listed above.
 
 Require the evidence contract for every concern and this exact response when no concerns remain:
 
@@ -315,7 +337,7 @@ FINAL APPROVED -- No verified blocking findings.
 
 Treat the final review output as claims, not proof. Fable must independently verify every cited source and reconstruct each concern using the evidence contract before it can block. Missing evidence makes the item nonblocking.
 
-Use the same accept, reject, counter, fix, and three-cycle rules. Re-run full verification and send a new sanitized packet after an accepted fix.
+Use the same accept, reject, and counter rules. Dispatch at most three reviewer-driven Opus fixers during final review; after each accepted fix, re-run full verification and send a new sanitized packet. If a verified blocker remains after the third fix attempt, stop for user resolution.
 
 ## Final approval gate
 
@@ -328,10 +350,12 @@ Present:
 - Runtime smoke-test evidence.
 - Accepted, rejected, and countered findings.
 - Unverified questions and residual risks.
-- Final Sol review outcome.
+- Final Codex review outcome, actual model, and actual effort.
 - Complete working-tree status.
 
-Then ask whether to commit and push. Until the user explicitly approves, do neither.
+If the user cancels, stop the current invocation, leave all reviewed and unreviewed working-tree changes visible and uncommitted, and report `CANCELLED — NOT APPROVED`. Cancellation creates no durable resume state and is not approval.
+
+Otherwise ask whether to commit and push. Until the user explicitly approves, do neither.
 
 If approved, create only the requested commit or commits and push only the requested branch. If declined, leave the reviewed work uncommitted and report how to inspect it.
 
@@ -341,7 +365,7 @@ If approved, create only the requested commit or commits and push only the reque
 |---|---|
 | Plan, step contracts, validation, evidence checks | Fable |
 | Implementation and accepted fixes | Fresh Opus subagent |
-| Adversarial review | GPT-5.6 Sol |
+| Adversarial review | Configured Codex reviewer |
 | Commit and push authorization | User |
 
 | Review status | Treatment |
@@ -368,13 +392,13 @@ If approved, create only the requested commit or commits and push only the reque
 
 | Rationalization | Counter |
 |---|---|
-| "Sol probably checked the line." | Fable opens the current source. |
+| "Codex probably checked the line." | Fable opens the current source. |
 | "Better safe than sorry." | Unsupported changes create risk; verify first. |
 | "Both models agree." | Agreement is not evidence. |
 | "The deadline makes staging harmless." | Staging changes review scope and user state. |
 | "This convention is industry standard." | Repository instructions control. |
 | "It is only a minor automatic commit." | The user owns commit boundaries. |
-| "Sol withheld the approval phrase, so the hypothesis blocks." | Completion depends on verified blockers, not wording. |
+| "Codex withheld the approval phrase, so the hypothesis blocks." | Completion depends on verified blockers, not wording. |
 
 ## Review red flags
 

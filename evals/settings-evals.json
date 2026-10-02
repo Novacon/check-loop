@@ -1,0 +1,32 @@
+{
+  "skill_name": "settings",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Effective config inspection returns {\"model\":\"user-selected-model\",\"effort\":\"high\",\"maxRounds\":6}. The user asks to set project scope effort to `default` and maxRounds to 8 while leaving the model untouched. Describe the command behavior and final report.",
+      "expected_output": "The settings workflow inspects first, runs one project-scoped config command with only `--effort default` and `--max-rounds 8`, and does not include a model setter. It inspects the resolved config afterward, explains that default stores null and inherits Codex effort, reports the project scope and effective values, and states that model availability is checked only when a review starts.",
+      "files": [],
+      "assertions": [
+        "Inspects effective configuration before changing it",
+        "Uses project scope",
+        "Applies only the requested effort and maxRounds setters",
+        "Does not persist or overwrite a model setting",
+        "Explains that default inherits Codex configuration",
+        "Does not claim setup or config inspection proves model availability"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "A user opens /check-loop:settings without setter flags and asks which reviewer models they can choose. No Codex availability output or known model ID is present in the conversation. Handle the request without making a configuration change.",
+      "expected_output": "The skill prints the effective config, lets the user choose user or project scope and which keys to change, offers `default`, and asks for the user's exact known Codex model selection. It does not invent model IDs, claim a model is available, write a config file, or start a review.",
+      "files": [],
+      "assertions": [
+        "Shows effective settings before asking for changes",
+        "Lets the user choose user or project scope",
+        "Offers default as Codex inheritance",
+        "Does not invent model IDs without availability evidence",
+        "Does not write settings until the user selects at least one change"
+      ]
+    }
+  ]
+}
