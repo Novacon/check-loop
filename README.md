@@ -24,7 +24,7 @@ On a headless machine, use `codex login --device-auth`.
 Run these commands inside Claude Code:
 
 ```text
-/plugin marketplace add lordknows13/claude-check-loop
+/plugin marketplace add Novacon/check-loop
 /plugin install check-loop@lordknows13-check-loop
 /reload-plugins
 ```
@@ -155,8 +155,8 @@ node plugins/check-loop/scripts/codex-invoke.mjs setup
 ## Local development
 
 ```bash
-git clone https://github.com/lordknows13/claude-check-loop.git
-claude --model fable --plugin-dir ./claude-check-loop/plugins/check-loop
+git clone https://github.com/Novacon/check-loop.git
+claude --model fable --plugin-dir ./check-loop/plugins/check-loop
 ```
 
 When working in another project, pass the absolute path to the clone's `plugins/check-loop` directory. Keep the whole plugin directory together. The skills need the scripts alongside them.
