@@ -1,4 +1,11 @@
-# check-loop
+```text
+       _               _    _
+   ___| |__   ___  ___| | _| |  ___  ___   _ __
+  / __| '_ \ / _ \/ __| |/ / | / _ \/ _ \ | '_ \
+ | (__| | | |  __/ (__|   <| || (_\/ (_) || |_) |
+  \___|_| |_|\___|\___|_|\_\_| \___/\___/ | .__/
+                                          |_|
+```
 
 check-loop is a plugin for Claude Code and pi that asks Codex to review a plan before you build it, check a research draft, or review code as you work through an approved plan.
 
@@ -6,7 +13,7 @@ The model your session runs on is the orchestrator. It runs the workflow and che
 
 A review finding needs evidence before it can block progress. The orchestrator opens the cited source instead of accepting a concern because another model raised it.
 
-Current version: 5.2.0.
+Current version: 5.2.0. The first release shipped in March 2026, ten days before OpenAI's own Codex plugin for Claude Code and before the other cross-model review loops credited in the changelog.
 
 ## Install
 
