@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>check-loop</title>
+<meta name="description" content="Codex reviews your plans, research and code before you trust them. A Claude Code and pi plugin where only verified, cited findings can block.">
+<link rel="canonical" href="https://checkloop.dev/">
+<meta property="og:title" content="check-loop">
+<meta property="og:url" content="https://checkloop.dev/">
+<meta name="theme-color" content="#0a0a0a">
+<script>document.documentElement.classList.add('js')</script>
+<style>
+@font-face { font-family: "Champagne Limousines"; src: url("fonts/ChampagneLimousines-Bold.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Departure Mono"; src: url("fonts/DepartureMono-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Inter"; src: url("fonts/Inter-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Inter"; src: url("fonts/Inter-SemiBold.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "Inter"; src: url("fonts/Inter-ExtraBold.woff2") format("woff2"); font-weight: 800; font-display: swap; }
+@font-face { font-family: "Inconsolata"; src: url("fonts/Inconsolata-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+
+/* Layout: the ohmyjev site, pink accents. The NOVACON homepage. Full-screen slides over an ambient grid, the wordmark flies
+   from center stage into the header, fixed chrome in the corners. Content follows README.md.
+   Every doc slide shares one frame: label + heading on the left, lede on the right, then a body
+   whose panels stretch to equal heights, so the slides line up when you page through them. */
+:root {
+  --ground: #0a0a0a;
+  --surface: #141414;
+  --panel: rgba(10, 10, 10, .9);
+  --panel-hi: rgba(22, 22, 22, .94);
+  --paper: #cacccc;
+  --muted: rgba(202, 204, 204, .78);
+  --faint: rgba(202, 204, 204, .55);
+  --line: rgba(121, 129, 134, .34);
+  --line-strong: #a8adb0;
+  --steel: #798186;
+  --warm: #c9c2b4;
+  --accent: #ff3d8b;
+  --pink-hi: #ff9fc8;
+  --green: #00e676;
+  --inline: clamp(22px, 5.5vw, 75px);
+  --block: clamp(26px, 4.5vh, 75px);
+  --gap: clamp(14px, 2.2vh, 24px);
+  --ui: clamp(.8125rem, .75rem + .18vw, .9375rem);
+  --ease: cubic-bezier(.22, .61, .36, 1);
+  --logo: "Champagne Limousines", "Inter", system-ui, sans-serif;
+  --display: "Inter", system-ui, sans-serif;
+  --body: "Inconsolata", ui-monospace, Menlo, monospace;
+  --label: "Departure Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: dark;
+}
+@media (min-width: 821px) { :root { --inline: clamp(108px, 8.5vw, 176px); } }
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { background: var(--ground); }
+@media (min-width: 821px) and (prefers-reduced-motion: no-preference) { html { scroll-snap-type: y proximity; } }
+body { background: var(--ground); color: var(--paper); font-family: var(--body); -webkit-font-smoothing: antialiased; }
+a { color: inherit; text-decoration: none; -webkit-tap-highlight-color: transparent; }
+button { font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; background: none; border: 0; cursor: pointer; }
+:focus-visible { outline: 1px solid var(--paper); outline-offset: 4px; }
+code { font-family: var(--body); color: var(--paper); }
+.lbl { font-family: var(--label); font-size: var(--ui); letter-spacing: .08em; text-transform: uppercase; }
+
+#ambient { position: fixed; inset: 0; z-index: 0; width: 100%; height: 100%; pointer-events: none; opacity: .82; }
+
+/* header + flying wordmark */
+.header {
+  position: fixed; inset: calc(var(--block) + env(safe-area-inset-top, 0px)) var(--inline) auto; z-index: 20;
+  display: flex; align-items: flex-start; justify-content: space-between; pointer-events: none;
+}
+.header > * { pointer-events: auto; }
+.brand-target { display: block; height: 1px; }
+.brand {
+  position: absolute; top: 0; left: 0; z-index: 21; display: block; opacity: 0;
+  font: 400 30px/1 var(--logo); letter-spacing: .04em; color: var(--paper); white-space: nowrap;
+}
+.ready .brand { opacity: 1; }
+.glitch { position: relative; display: block; }
+/* the logo is an image, so it scales with the brand font-size; four hard drop-shadows draw a pink stroke around it */
+.logo { height: 1em; width: auto; filter: drop-shadow(.007em 0 0 var(--accent)) drop-shadow(-.007em 0 0 var(--accent)) drop-shadow(0 .007em 0 var(--accent)) drop-shadow(0 -.007em 0 var(--accent)); }
+/* neon, oh-my-zsh style: a tube around each letter in the same pink gradient as the heading accents, the solid letter on top.
+   ::after is a ground-colored copy of the letters so the tube's inner half doesn't show through the semi-transparent letter */
+/* the box overhangs the letters so the outline isn't clipped at the edges; padding keeps the text in place */
+.neon, .neon::after { position: absolute; pointer-events: none; padding: .15em; }
+.neon { inset: -.15em; }
+.neon::after { inset: 0; }
+.neon {
+  color: transparent; -webkit-text-stroke: max(.05em, 1.5px) transparent;
+  background: linear-gradient(90deg, var(--accent), var(--pink-hi));
+  -webkit-background-clip: text; background-clip: text;
+}
+.neon::after { content: attr(data-text); color: var(--ground); }
+.glitch::before, .glitch::after { content: attr(data-text); position: absolute; inset: 0; opacity: 0; pointer-events: none; }
+.glitch::before { color: #3fb6c6; }
+.glitch::after { color: var(--accent); }
+.ready:not(.moving) .glitch { animation: glitch 3.4s step-end infinite; }
+.ready:not(.moving) .glitch::before { animation: glitch-a 3.4s step-end infinite; }
+.ready:not(.moving) .glitch::after { animation: glitch-b 3.4s step-end infinite; }
+@keyframes glitch {
+  0%, 69%, 73%, 91%, 95%, 100% { transform: none; opacity: .9; }
+  70% { transform: translateX(-2px) skewX(-2deg); opacity: .76; }
+  71% { transform: translateX(3px); opacity: 1; }
+  92% { transform: scaleX(1.008); opacity: .82; }
+  93% { transform: translateX(-1px); opacity: 1; }
+}
+@keyframes glitch-a {
+  0%, 69%, 72%, 91%, 94%, 100% { clip-path: inset(0 0 100% 0); opacity: 0; transform: none; }
+  70% { clip-path: inset(12% 0 62% 0); opacity: .72; transform: translateX(-.07em); }
+  71% { clip-path: inset(66% 0 12% 0); opacity: .52; transform: translateX(.04em); }
+  92% { clip-path: inset(38% 0 42% 0); opacity: .62; transform: translateX(-.05em); }
+  93% { clip-path: inset(76% 0 8% 0); opacity: .45; transform: translateX(-.03em); }
+}
+@keyframes glitch-b {
+  0%, 69%, 72%, 91%, 94%, 100% { clip-path: inset(100% 0 0 0); opacity: 0; transform: none; }
+  70% { clip-path: inset(58% 0 18% 0); opacity: .65; transform: translateX(.07em); }
+  71% { clip-path: inset(24% 0 58% 0); opacity: .46; transform: translateX(-.04em); }
+  92% { clip-path: inset(8% 0 74% 0); opacity: .58; transform: translateX(.05em); }
+  93% { clip-path: inset(48% 0 34% 0); opacity: .4; transform: translateX(-.03em); }
+}
+
+/* bottom chrome: credits left, slide counter + back-to-top right; appears once the intro has passed */
+.bottom {
+  position: fixed; left: var(--inline); right: var(--inline); bottom: calc(var(--block) * .55 + env(safe-area-inset-bottom, 0px)); z-index: 15;
+  display: flex; align-items: center; justify-content: space-between; gap: 24px; pointer-events: none;
+  transition: opacity .35s ease, visibility 0s linear .35s;
+}
+.bottom > * { pointer-events: auto; }
+.js body:not(.passed) .bottom { visibility: hidden; opacity: 0; }
+.passed .bottom { transition-delay: 0s; }
+.footer { color: var(--muted); }
+.footer a { color: var(--paper); transition: color .2s ease; }
+.footer a:hover { color: var(--warm); }
+.footer a span { color: var(--accent); }
+.bottom-right { display: flex; align-items: center; gap: 18px; }
+.indicator { display: flex; align-items: center; gap: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.indicator .track { position: relative; display: block; width: 64px; height: 1px; background: var(--line); }
+#slide-progress { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--accent); transition: width .5s var(--ease); }
+.to-top {
+  display: inline-flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid var(--line); color: var(--paper);
+  background: rgba(10, 10, 10, .72); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  transition: border-color .2s ease, color .2s ease;
+}
+.to-top span { color: var(--accent); }
+.to-top:hover { border-color: var(--accent); }
+
+/* content fades out under the fixed header and the bottom chrome */
+body::before, body::after { content: ""; position: fixed; left: 0; right: 0; z-index: 14; pointer-events: none; opacity: 0; transition: opacity .35s ease; }
+/* solid down past the docked wordmark (and the notch, which the header also clears), then a short fade */
+body::before { top: 0; height: calc(env(safe-area-inset-top, 0px) + var(--block) + 56px); background: linear-gradient(var(--ground) calc(100% - 22px), rgba(10, 10, 10, 0)); }
+body::after { bottom: 0; height: calc(var(--block) + 52px); background: linear-gradient(rgba(10, 10, 10, 0), var(--ground) 55%); }
+.passed::before, .passed::after { opacity: 1; }
+
+/* side rail, after omp.sh: one square per slide, title pops out on hover */
+.rail {
+  position: fixed; right: clamp(16px, 1.8vw, 40px); top: 50%; transform: translateY(-50%); z-index: 16;
+  display: flex; flex-direction: column; border: 1px solid var(--line);
+  background: rgba(10, 10, 10, .72); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+}
+.rail a { position: relative; display: grid; place-items: center; width: 58px; height: 58px; border-bottom: 1px solid var(--line); color: var(--steel); transition: color .2s ease, background .2s ease; }
+.rail a:last-child { border-bottom: 0; }
+.rail a:hover, .rail a:focus-visible { color: var(--paper); background: rgba(121, 129, 134, .1); outline: none; }
+.rail a[aria-current="page"] { color: var(--accent); background: rgba(255, 61, 139, .08); }
+.rail a[aria-current="page"]::before { content: ""; position: absolute; left: -1px; top: -1px; bottom: -1px; width: 2px; background: var(--accent); }
+.rail svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: square; stroke-linejoin: miter; }
+.rail .n { position: absolute; right: 5px; bottom: 3px; font: 10px var(--label); letter-spacing: .06em; color: var(--faint); }
+.rail a[aria-current="page"] .n { color: var(--accent); }
+.rail .tip {
+  position: absolute; right: calc(100% + 10px); top: 50%; transform: translate(6px, -50%); opacity: 0; pointer-events: none;
+  display: flex; gap: 10px; padding: 10px 14px; white-space: nowrap; border: 1px solid var(--line); background: var(--ground); color: var(--paper);
+  font: .875rem var(--label); letter-spacing: .08em; text-transform: uppercase; transition: opacity .18s ease, transform .18s ease;
+}
+.rail .tip b { font-weight: 400; color: var(--accent); }
+.rail a:hover .tip, .rail a:focus-visible .tip { opacity: 1; transform: translate(0, -50%); }
+@media (max-width: 820px) { .rail { display: none; } }
+
+/* slides */
+main { position: relative; z-index: 1; }
+.slide {
+  position: relative; min-height: 100vh; min-height: 100svh; scroll-snap-align: start;
+  padding: calc(var(--block) + 52px) var(--inline);
+}
+.slide + .slide::before { content: ""; position: absolute; top: 0; left: var(--inline); right: var(--inline); height: 1px; background: linear-gradient(90deg, transparent, var(--line) 20%, var(--line) 80%, transparent); }
+.js .slide .reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s ease, transform .8s var(--ease); }
+.js .slide.visible .reveal { opacity: 1; transform: none; }
+.js .slide .reveal:nth-child(2) { transition-delay: .08s; }
+
+/* quick start, under the wordmark on the first slide; JS places it */
+.quick { position: absolute; left: 50%; transform: translateX(-50%); width: min(calc(100% - 2 * var(--inline)), 780px); }
+.tagline { color: var(--paper); font-size: clamp(1rem, .94rem + .25vw, 1.2rem); line-height: 1.45; text-align: center; }
+.tagline span { display: block; margin-top: 2px; color: var(--muted); }
+.tagline a { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--accent); }
+.badges { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 16px; font-size: .75rem; }
+.badges span { display: inline-flex; align-items: center; gap: 8px; padding: 4px 9px; border: 1px solid var(--line); color: var(--muted); }
+.badges span::before { content: ""; width: 5px; height: 5px; background: var(--steel); }
+.badges span:first-child::before { background: var(--accent); }
+.badges span:nth-child(2)::before { background: var(--green); }
+.qs { margin-top: 26px; }
+.qs-head { display: flex; justify-content: space-between; align-items: flex-end; color: var(--faint); font-size: .75rem; margin-bottom: 8px; }
+.qs-tabs { display: flex; gap: 4px; }
+.qs-tab { padding: 3px 8px 4px; border-bottom: 1px solid transparent; color: var(--faint); transition: color .2s ease, border-color .2s ease; }
+.qs-tab:hover { color: var(--paper); }
+.qs-tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+.qs-rows[hidden] { display: none; }
+.qs-rows { border: 1px solid var(--line); background: rgba(10, 10, 10, .78); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+.qs-row { display: flex; align-items: stretch; border-top: 1px solid var(--line); transition: background .2s ease; }
+.qs-row:first-child { border-top: 0; }
+.qs-row:hover { background: rgba(121, 129, 134, .07); }
+.qs-n, .qs-p { display: grid; place-items: center; width: 44px; flex: none; border-right: 1px solid var(--line); font-family: var(--label); font-size: .875rem; }
+.qs-n { color: var(--faint); }
+.qs-p { color: var(--accent); }
+.qs-row code { flex: 1; min-width: 0; padding: 13px 16px; font: 16px/1.4 var(--body); white-space: pre-wrap; overflow-wrap: anywhere; }
+.qs-row .where { align-self: center; padding: 0 12px; color: var(--faint); font-size: .6875rem; white-space: nowrap; }
+.qs-row .copy-btn { flex: none; min-width: 88px; padding: 0 14px; border-left: 1px solid var(--line); color: var(--accent); font: .8125rem var(--label); letter-spacing: .08em; text-transform: uppercase; transition: background .2s ease, color .2s ease; }
+.qs-row .copy-btn:hover { background: var(--accent); color: var(--ground); }
+.hint { margin-top: 12px; color: var(--muted); font-size: 1rem; line-height: 1.5; text-align: center; }
+
+/* doc slides: one shared frame. Label, heading and lede sit at the same spot on every slide and the
+   body fills the rest, so panels end on the same line too; capped so tall screens don't stretch it */
+.doc { display: flex; flex-direction: column; justify-content: center; }
+.doc-inner { display: flex; flex-direction: column; gap: clamp(18px, 3vh, 40px); width: min(100%, 1360px); min-height: min(calc(100svh - 2 * (var(--block) + 52px)), 880px); }
+.head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: clamp(24px, 4vw, 72px); align-items: start; }
+.section-label { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; color: var(--paper); margin-bottom: clamp(10px, 1.8vh, 18px); }
+.section-label::before { content: ""; width: 6px; height: 6px; background: var(--accent); }
+.section-label span { margin-left: 8px; color: var(--faint); }
+h2 { color: var(--paper); font: 800 clamp(2.6rem, 4.6vw, 4.8rem)/.95 var(--display); letter-spacing: -.05em; text-transform: lowercase; text-wrap: balance; }
+h2 em { font-style: inherit; background: linear-gradient(90deg, var(--accent), var(--pink-hi)); -webkit-background-clip: text; background-clip: text; color: transparent; padding-right: .04em; }
+.lede { max-width: 62ch; color: var(--muted); font-size: clamp(1rem, .95rem + .2vw, 1.1875rem); line-height: 1.5; }
+.body { flex: 1; display: grid; gap: var(--gap); }
+.body.main-first { grid-template-rows: 1fr auto; }
+.body.main-last { grid-template-rows: auto 1fr; }
+h3 { font: var(--ui) var(--label); letter-spacing: .08em; text-transform: uppercase; color: var(--paper); }
+:where(.body) p, :where(.body) li { color: var(--muted); font-size: 1rem; line-height: 1.45; }
+.body a:not(.cta) { color: var(--paper); text-decoration: underline; text-decoration-color: var(--steel); text-underline-offset: 3px; }
+.body a:not(.cta):hover { text-decoration-color: var(--accent); }
+
+/* hairline grids: equal cells, panels stretch */
+.grid { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); grid-auto-rows: 1fr; }
+.grid > * { position: relative; display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: clamp(14px, 2vh, 22px) clamp(14px, 1.4vw, 22px); background: var(--panel); transition: background .25s ease; }
+.grid > *:hover { background: var(--panel-hi); }
+.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.g5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.grow { flex: 1; }
+
+/* feature cards */
+.feat .top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.feat svg { width: 22px; height: 22px; fill: none; stroke: var(--paper); stroke-width: 1.3; stroke-linecap: square; stroke-linejoin: miter; transition: stroke .25s ease; }
+.feat:hover svg { stroke: var(--accent); }
+.kind { font: .6875rem var(--label); letter-spacing: .1em; text-transform: uppercase; color: var(--faint); display: inline-flex; align-items: center; gap: 6px; }
+.kind::before { content: ""; width: 5px; height: 5px; background: var(--steel); }
+.kind.gate::before { background: var(--accent); }
+.kind.check::before { background: var(--green); }
+.kind.route::before { background: #4575de; }
+.feat h3 { font: 800 1.1875rem/1.2 var(--display); letter-spacing: -.01em; text-transform: none; }
+.feat p { font-size: .9375rem; }
+.feat .cfg { margin-top: auto; padding-top: 10px; border-top: 1px dashed var(--line); color: var(--faint); font: .8125rem var(--body); letter-spacing: .007em; }
+.feat .cfg::before { content: "⚙ "; color: var(--steel); }
+.feat:hover .cfg { color: var(--muted); }
+
+/* stat strip on the flow slide */
+.stats > * { flex-direction: row; align-items: center; gap: 14px; }
+.stats b { font: 800 clamp(1.8rem, 2.6vw, 2.6rem)/1 var(--display); letter-spacing: -.04em; color: var(--paper); }
+.stats small { margin-left: 3px; font-size: .45em; letter-spacing: 0; color: var(--accent); }
+.stats .lbl { font-size: .75rem; line-height: 1.4; color: var(--faint); }
+
+/* code windows */
+.code { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--line); background: rgba(5, 5, 5, .7); }
+.code-bar { display: flex; align-items: center; gap: 12px; padding: 7px 12px; border-bottom: 1px solid var(--line); color: var(--faint); font-size: .6875rem; }
+.code-bar .dots { color: var(--steel); font-size: .5rem; letter-spacing: .35em; }
+.copy { margin-left: auto; color: var(--muted); font-size: .6875rem; transition: color .2s ease; }
+.copy:hover { color: var(--paper); }
+.copy span { color: var(--accent); }
+.code pre { flex: 1; padding: 10px 14px; font: 14.5px/1.55 var(--body); color: var(--paper); white-space: pre-wrap; overflow-wrap: break-word; }
+.nw { white-space: nowrap; }
+.code .c { color: var(--steel); }
+.code .o { color: var(--accent); }
+.code .g { color: var(--green); }
+.code .k { color: var(--warm); }
+.grid .code { margin-top: auto; }
+.grid > * > .code.grow { margin-top: 4px; }
+.card-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; }
+.card-head .meta { color: var(--faint); font: .6875rem var(--label); letter-spacing: .08em; text-transform: uppercase; text-align: right; text-decoration: none !important; }
+.card-head a.meta { color: var(--muted); transition: color .2s ease; }
+.card-head a.meta:hover { color: var(--paper); }
+.card-head a.meta span { color: var(--accent); }
+.cmd { padding: 8px 12px; border-left: 2px solid var(--accent); background: rgba(5, 5, 5, .7); font: 14.5px/1.55 var(--body); color: var(--paper); white-space: pre-wrap; overflow-wrap: break-word; }
+
+/* flow: what happens to one tool call */
+.flow-cols { display: grid; gap: var(--gap); grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: stretch; }
+.pipe { position: relative; display: flex; flex-direction: column; gap: 12px; padding-left: 26px; }
+.pipe::before { content: ""; position: absolute; left: 6px; top: 14px; bottom: 14px; width: 1px; background: linear-gradient(var(--accent), var(--line) 40%, var(--line) 70%, var(--green)); }
+.node, .stage { position: relative; border: 1px solid var(--line); background: var(--panel); }
+.node::before, .stage::before { content: ""; position: absolute; left: -24px; top: 15px; width: 9px; height: 9px; border: 1px solid var(--steel); background: var(--ground); }
+.stage::before { border-color: var(--accent); background: var(--accent); }
+.stage { display: flex; flex-direction: column; flex: 3; }
+.stage + .stage { flex: 2; }
+.node { display: flex; align-items: center; gap: 12px; padding: 10px 14px; color: var(--paper); font-size: 1rem; }
+.node .lbl { color: var(--faint); font-size: .6875rem; }
+.stage h3 { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.stage h3 b { font-weight: 400; color: var(--accent); }
+.stage h3 i { margin-left: auto; font-style: normal; color: var(--faint); font-size: .6875rem; }
+.rule { flex: 1; display: grid; grid-template-columns: minmax(0, .9fr) 18px minmax(0, 1.3fr); gap: 10px; align-items: center; padding: 9px 14px; border-top: 1px solid var(--line); font-size: 1rem; line-height: 1.35; }
+.stage h3 + .rule { border-top: 0; }
+.rule .if { color: var(--muted); }
+.rule .to { color: var(--steel); font-family: var(--label); }
+.rule .then { color: var(--paper); }
+.rule .then.deny { color: var(--accent); }
+.rule .then.ok { color: var(--green); }
+.side { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
+.side .code { flex: none; }
+.callout { flex: 1; display: flex; flex-direction: column; gap: 10px; padding: clamp(14px, 2vh, 22px) clamp(14px, 1.4vw, 22px); border: 1px solid var(--line); border-left: 2px solid var(--green); background: var(--panel); }
+.callout.warn { flex: none; border-left-color: var(--accent); }
+
+/* install steps */
+.step .n { display: flex; align-items: center; gap: 10px; color: var(--accent); font: .8125rem var(--label); letter-spacing: .1em; }
+.step .n::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--line), transparent); }
+.step h4 { color: var(--paper); font: 800 1.25rem/1.2 var(--display); letter-spacing: -.01em; }
+.step ol { display: grid; gap: 4px; padding-left: 18px; }
+.step li::marker { color: var(--steel); font-family: var(--label); font-size: .8125rem; }
+.fix h3 { font-size: .8125rem; color: var(--warm); }
+.fix p { font-size: .9375rem; }
+
+/* settings table */
+.table { border: 1px solid var(--line); overflow-x: auto; scrollbar-width: thin; }
+table { width: 100%; border-collapse: collapse; }
+th { padding: 7px 14px; text-align: left; font: .6875rem var(--label); letter-spacing: .1em; text-transform: uppercase; color: var(--faint); border-bottom: 1px solid var(--line); background: var(--panel); }
+td { padding: clamp(3px, .5vh, 8px) 14px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: .9375rem; line-height: 1.35; vertical-align: top; background: rgba(10, 10, 10, .82); transition: background .2s ease; }
+tr:hover td { background: var(--panel-hi); }
+tr:last-child td { border-bottom: 0; }
+td:first-child, td:nth-child(2) { white-space: nowrap; }
+td:first-child code { color: var(--paper); }
+td:nth-child(2) { color: var(--warm); }
+.on { color: var(--green); }
+
+/* links */
+.links { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: auto; padding-top: 4px; }
+.links a { display: inline-flex; gap: 8px; color: var(--paper); font-size: .8125rem; text-decoration: none !important; }
+.links a span { color: var(--accent); transition: transform .25s ease; }
+.links a:hover span { transform: translate(3px, -3px); }
+
+/* laptop screens: same frame, denser type so each slide still fits one screen */
+@media (min-width: 1001px) and (max-height: 880px) {
+  h2 { font-size: clamp(2.4rem, 4vw, 3.8rem); }
+  .lede { font-size: .9375rem; line-height: 1.45; }
+  .feat h3 { font-size: 1.0625rem; }
+  .feat svg { width: 20px; height: 20px; }
+  td { padding-top: 2px; padding-bottom: 2px; font-size: .875rem; line-height: 1.3; }
+  th { padding-top: 4px; padding-bottom: 4px; }
+  .code pre, .cmd { font-size: 13.5px; line-height: 1.45; padding-top: 8px; padding-bottom: 8px; }
+  :where(.body) p, :where(.body) li { font-size: .9375rem; line-height: 1.4; }
+  .grid > * { padding: 12px 14px; gap: 6px; }
+  .feat .top { margin-bottom: 0; }
+  .feat p { font-size: .875rem; line-height: 1.35; }
+  .feat .cfg { padding-top: 6px; }
+  .node { padding: 7px 14px; }
+  .stage h3 { padding: 7px 14px; }
+  .rule { padding: 6px 14px; font-size: .9375rem; }
+  .pipe { gap: 8px; }
+}
+@media (max-width: 1180px) {
+  .g5 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 1000px) {
+  .head, .flow-cols, .g2, .g3 { grid-template-columns: 1fr; }
+  .lede { margin-top: 14px; }
+  .g5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid { grid-auto-rows: auto; }
+  .doc-inner { min-height: 0; }
+}
+@media (max-width: 600px) {
+  .brand { font-size: 22px; }
+  .slide { padding-top: calc(var(--block) + 56px); padding-bottom: 96px; }
+  .g4, .g5 { grid-template-columns: 1fr; }
+  .qs-row .where { display: none; }
+  .rule { grid-template-columns: 1fr; gap: 2px; }
+  .rule .to { display: none; }
+  .indicator { display: none; }
+  .bottom { font-size: .625rem; gap: 12px; }
+  .footer { letter-spacing: .04em; white-space: nowrap; }
+  .card-head .meta { text-align: left; }
+  /* settings table becomes one block per setting: name and default on a line, what it changes under it */
+  thead { display: none; }
+  table, tbody, tr, td { display: block; }
+  tr { padding: 10px 14px; border-bottom: 1px solid var(--line); background: rgba(10, 10, 10, .82); }
+  tr:last-child { border-bottom: 0; }
+  td, tr:hover td { display: inline; padding: 0; border: 0; background: none; white-space: normal !important; }
+  td:nth-child(2)::before { content: " · "; color: var(--faint); }
+  td:nth-child(3) { display: block; margin-top: 4px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .js .slide .reveal { opacity: 1; transform: none; transition: none; }
+  .glitch, .glitch::before, .glitch::after { animation: none !important; }
+  #slide-progress { transition: none; }
+}
+</style>
+</head>
+<body>
+<canvas id="ambient" aria-hidden="true"></canvas>
+
+<header class="header">
+  <span class="brand-target" id="brand-target" aria-hidden="true"></span>
+</header>
+<nav class="rail" id="rail" aria-label="Slides"></nav>
+<a href="#top" class="brand" id="brand" aria-label="check-loop home"><img class="logo glitch" src="logo.svg" alt="check-loop"></a>
+
+<main>
+  <section id="top" class="slide landing" data-title="Quick start" aria-label="check-loop quick start">
+    <div class="quick">
+      <p class="tagline">Codex reviews your plans, research and code.<span>A Claude Code and pi plugin. Only findings with verified evidence block.</span></p>
+      <p class="badges lbl"><span>Claude Code 2.1.257+</span><span>pi</span><span>Reviewed by Codex</span><span>MIT license</span></p>
+      <div class="qs">
+        <div class="qs-head lbl"><span>Quick start</span><span class="qs-tabs" role="tablist" aria-label="Agent"><button type="button" class="qs-tab" role="tab" data-agent="claude" aria-selected="true">Claude Code</button><button type="button" class="qs-tab" role="tab" data-agent="pi" aria-selected="false">pi</button></span></div>
+        <div class="qs-rows" data-agent="claude">
+          <div class="qs-row"><span class="qs-n">1</span><span class="qs-p" aria-hidden="true">$</span><code>npm install -g @openai/codex &amp;&amp; codex login</code><span class="where lbl">shell</span><button type="button" class="copy-btn" data-copy>Copy</button></div>
+          <div class="qs-row"><span class="qs-n">2</span><span class="qs-p" aria-hidden="true">&gt;</span><code>/plugin marketplace add Novacon/check-loop</code><span class="where lbl">claude code</span><button type="button" class="copy-btn" data-copy>Copy</button></div>
+          <div class="qs-row"><span class="qs-n">3</span><span class="qs-p" aria-hidden="true">&gt;</span><code>/plugin install check-loop@lordknows13-check-loop</code><span class="where lbl">claude code</span><button type="button" class="copy-btn" data-copy>Copy</button></div>
+          <div class="qs-row"><span class="qs-n">4</span><span class="qs-p" aria-hidden="true">&gt;</span><code>/check-loop path/to/plan.md</code><span class="where lbl">claude code</span><button type="button" class="copy-btn" data-copy>Copy</button></div>
+        </div>
+        <div class="qs-rows" data-agent="pi" hidden>
+          <div class="qs-row"><span class="qs-n">1</span><span class="qs-p" aria-hidden="true">$</span><code>npm install -g @openai/codex &amp;&amp; codex login</code><span class="where lbl">shell</span><button type="button" class="copy-btn" data-copy>Copy</button></div>
+          <div class="qs-row"><span class="qs-n">2</span><span class="qs-p" aria-hidden="true">$</span><code>pi install git:github.com/Novacon/check-loop</code><span class="where lbl">shell</span><button type="button" class="copy-btn" data-copy>Copy</button></div>
+          <div class="qs-row"><span class="qs-n">3</span><span class="qs-p" aria-hidden="true">&gt;</span><code>/skill:check-loop path/to/plan.md</code><span class="where lbl">pi</span><button type="button" class="copy-btn" data-copy>Copy</button></div>
+        </div>
+      </div>
+      <p class="hint">No API key. It uses your Codex login.</p>
+    </div>
+  </section>
+
+  <section id="skills" class="slide doc" data-title="What you get">
+    <div class="doc-inner">
+      <div class="head reveal">
+        <p class="section-label lbl">01 / What you get <span>4 skills</span></p><h2>what you <em>get</em></h2>
+        <p class="lede">Your session model is the orchestrator. It runs the workflow and opens every cited source before acting on a finding. Codex reviews in a read-only sandbox.</p>
+      </div>
+      <div class="body reveal">
+        <div class="grid g4">
+          <div class="feat"><div class="top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM9 10h7M9 14h7M9 18h4"/></svg><span class="kind gate">Plan</span></div><h3>Review a plan</h3><p>One broad review, then later rounds check only the fixes. Six rounds by default, or one pass with <code>--quick</code>. Picks up where it left off if interrupted.</p><div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>claude code</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>/check-loop path/to/plan.md</pre></div></div>
+          <div class="feat"><div class="top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 4a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zM15.5 15.5L21 21"/></svg><span class="kind check">Research</span></div><h3>Research a question</h3><p>Writes a sourced draft and Codex checks it. You get one Markdown report with sources and open questions. No code.</p><div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>claude code</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>/check-loop:research "question"</pre></div></div>
+          <div class="feat"><div class="top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l12 8-12 8z"/></svg><span class="kind route">Execute</span></div><h3>Execute a plan</h3><p>A fresh subagent builds each step, then your checks run and Codex reviews the diff. A step gets three fix attempts. Nothing is committed or pushed without your approval.</p><div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>claude code</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>/check-loop:execute path/to/plan.md</pre></div></div>
+          <div class="feat"><div class="top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4"/></svg><span class="kind">Settings</span></div><h3>Pick the reviewer</h3><p>Set the Codex model, effort, round limit and implementer model, for all projects or just one. Unset values use your Codex and session defaults.</p><div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>claude code</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>/check-loop:settings</pre></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="flow" class="slide doc" data-title="How it decides">
+    <div class="doc-inner">
+      <div class="head reveal">
+        <p class="section-label lbl">02 / How it decides <span>One finding</span></p><h2>how it <em>decides</em></h2>
+        <p class="lede">Every finding cites a source and carries an evidence label. Only findings the orchestrator has verified can block.</p>
+      </div>
+      <div class="body reveal main-first">
+        <div class="flow-cols">
+          <div class="pipe">
+            <div class="node"><span class="lbl">In</span>Codex raises a finding</div>
+            <div class="stage">
+              <h3><b>01</b> The orchestrator checks the citation</h3>
+              <div class="rule"><span class="if">VERIFIED, critical or important</span><span class="to" aria-hidden="true">→</span><span class="then deny">Blocks: accept, reject or counter</span></div>
+              <div class="rule"><span class="if">INFERENCE or UNVERIFIED</span><span class="to" aria-hidden="true">→</span><span class="then">Report only</span></div>
+              <div class="rule"><span class="if">Minor, or a question</span><span class="to" aria-hidden="true">→</span><span class="then">Report only</span></div>
+            </div>
+            <div class="stage">
+              <h3><b>02</b> The next round <i>diff only</i></h3>
+              <div class="rule"><span class="if">Regression, or a missed critical defect</span><span class="to" aria-hidden="true">→</span><span class="then deny">Can still block</span></div>
+              <div class="rule"><span class="if">Repeat of a decided finding</span><span class="to" aria-hidden="true">→</span><span class="then ok">Dropped</span></div>
+            </div>
+          </div>
+          <div class="side">
+            <div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>evidence labels</span></div><pre><span class="g">VERIFIED</span>    the cited source supports the claim
+<span class="k">INFERENCE</span>   suggested by the source, not reproduced
+<span class="c">UNVERIFIED</span>  evidence missing or inaccessible</pre></div>
+            <div class="callout">
+              <h3>A failure is never approval</h3>
+              <p>A failed, empty or timed-out review is retried once, then the run stops. If blockers stall or the round limit is reached, you decide what happens next.</p>
+            </div>
+            <div class="callout warn">
+              <p>Secrets are redacted from everything Codex sees.</p>
+            </div>
+          </div>
+        </div>
+        <div class="grid g4 stats">
+          <div><b>1</b><span class="lbl">broad review, then diffs only</span></div>
+          <div><b>6</b><span class="lbl">rounds by default, 1 to 40</span></div>
+          <div><b>1</b><span class="lbl">dispute per rejected finding</span></div>
+          <div><b>20<small>min</small></b><span class="lbl">reviewer timeout per turn</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="install" class="slide doc" data-title="Install">
+    <div class="doc-inner">
+      <div class="head reveal">
+        <p class="section-label lbl">03 / Install <span>4 steps</span></p><h2><em>install</em> it</h2>
+        <p class="lede">You need Node.js 18+ and a signed-in Codex CLI. For pi, see the <a href="#top">quick start</a>.</p>
+      </div>
+      <div class="body reveal main-first">
+        <div class="grid g4">
+          <div class="step">
+            <p class="n">STEP 1</p><h4>Check your version</h4>
+            <p>Claude Code 2.1.257 or later.</p>
+            <div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>shell</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>claude --version</pre></div>
+          </div>
+          <div class="step">
+            <p class="n">STEP 2</p><h4>Sign in to Codex</h4>
+            <p>Headless? Use <code>codex login --device-auth</code>.</p>
+            <div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>shell</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>npm install -g @openai/codex
+codex login</pre></div>
+          </div>
+          <div class="step">
+            <p class="n">STEP 3</p><h4>Install the plugin</h4>
+            <p>Inside Claude Code.</p>
+            <div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>claude code</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>/plugin marketplace add Novacon/check-loop
+/plugin install check-loop@lordknows13-check-loop
+/reload-plugins</pre></div>
+          </div>
+          <div class="step">
+            <p class="n">STEP 4</p><h4>Pick your model</h4>
+            <p>The skills don't switch models, so start on the one you want.</p>
+            <div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>shell</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>claude --model fable</pre></div>
+          </div>
+        </div>
+        <div class="grid g4">
+          <div class="fix"><h3>Status: ready</h3><p><code>codex-invoke.mjs setup</code> confirms Codex is installed and signed in, not model access.</p></div>
+          <div class="fix"><h3>Wrong reviewer</h3><p>Unsupported or mismatched settings fail. It never swaps reviewers silently.</p></div>
+          <div class="fix"><h3>Uncommitted work</h3><p><code>execute</code> asks first: use a separate worktree, or include your changes.</p></div>
+          <div class="fix"><h3>Update</h3><p><code>/plugin marketplace update lordknows13-check-loop</code>, then <code>/plugin update check-loop@lordknows13-check-loop</code>. Settings carry over.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="settings" class="slide doc" data-title="Settings">
+    <div class="doc-inner">
+      <div class="head reveal">
+        <p class="section-label lbl">04 / Settings <span>/check-loop:settings</span></p><h2>tune <em>it</em></h2>
+        <p class="lede">Each setting uses the first value it finds: CLI flag, then <code>.claude/check-loop.json</code>, then <code>~/.claude/check-loop/config.json</code>, then the default.</p>
+      </div>
+      <div class="body reveal main-last">
+        <div class="table">
+          <table>
+            <thead><tr><th>Setting</th><th>Default</th><th>What it changes</th></tr></thead>
+            <tbody>
+              <tr><td><code>model</code></td><td>your Codex config</td><td>Codex reviewer model ID, or <code>default</code>.</td></tr>
+              <tr><td><code>effort</code></td><td>your Codex config</td><td>Reviewer reasoning effort, or <code>default</code>.</td></tr>
+              <tr><td><code>maxRounds</code></td><td>6</td><td>Plan and research round limit, 1 to 40.</td></tr>
+              <tr><td><code>implementerModel</code></td><td>your session model</td><td>Subagent model for <code>execute</code>, such as <code>opus</code> or a pi <code>provider/id</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="grid g3">
+          <div class="copyable"><div class="card-head"><h3>From the CLI</h3><button type="button" class="copy lbl" data-copy>Copy <span aria-hidden="true">→</span></button></div>
+            <pre class="cmd">node plugins/check-loop/scripts/codex-invoke.mjs config --project --effort high</pre>
+          </div>
+          <div><h3>What's new in 5.1</h3><p>Runs on your session model, has an implementer model setting, and works in <a href="https://pi.dev">pi</a>.</p></div>
+          <div><h3>Develop</h3><p>The loop lives in <code>scripts/lib/review-loop.mjs</code>. <code>node --test tests/</code> runs without model access.</p>
+            <div class="links lbl">
+              <a href="https://github.com/Novacon/check-loop">GitHub <span aria-hidden="true">↗</span></a>
+              <a href="https://github.com/Novacon/check-loop#readme">README <span aria-hidden="true">↗</span></a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="bottom lbl">
+  <footer class="footer">© 2026 <a href="https://novacon.io">NOVACON LLC</a> · <a href="https://github.com/Novacon/check-loop">GitHub <span aria-hidden="true">↗</span></a></footer>
+  <div class="bottom-right">
+    <aside class="indicator" aria-label="Slide progress">
+      <span id="slide-current">01</span>
+      <span class="track"><span id="slide-progress"></span></span>
+      <span id="slide-total">01</span>
+    </aside>
+    <a class="to-top scramble" href="#top">Top <span aria-hidden="true">↑</span></a>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2, '0');
+const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const slides = [...document.querySelectorAll('.slide')];
+
+// side rail
+const ICONS = {
+  top: 'M12 3v11M7 9l5 5 5-5M5 20h14',
+  skills: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+  flow: 'M6 3v18M6 9c6 0 12 1 12 7v5M15 18l3 3 3-3',
+  install: 'M4 5h16v14H4zM8 10l3 2-3 2M13 15h3',
+  settings: 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4',
+};
+const rail = $('rail');
+slides.forEach((s, i) => {
+  const a = document.createElement('a');
+  a.href = '#' + s.id; a.setAttribute('aria-label', s.dataset.title);
+  a.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[s.id]}"/></svg><span class="n">${pad(i)}</span><span class="tip"><b>${pad(i)}</b>${s.dataset.title}</span>`;
+  rail.append(a);
+});
+const railLinks = [...rail.children];
+
+// quick start: one set of steps per agent
+const tabs = [...document.querySelectorAll('.qs-tab')];
+tabs.forEach(t => t.addEventListener('click', () => {
+  tabs.forEach(b => b.setAttribute('aria-selected', String(b === t)));
+  document.querySelectorAll('.qs-rows').forEach(r => { r.hidden = r.dataset.agent !== t.dataset.agent; });
+  measure(); intro(); // the steps' height can change, and the wordmark sits above them
+}));
+
+// copy buttons: copy the command or code next to them
+document.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', async () => {
+  const src = b.closest('.qs-row, .code, .copyable').querySelector('code, pre');
+  const label = b.firstChild, was = label.textContent;
+  try { await navigator.clipboard.writeText(src.textContent); label.textContent = was.replace('Copy', 'Copied'); }
+  catch { getSelection().selectAllChildren(src); label.textContent = was.replace('Copy', '⌘C'); }
+  setTimeout(() => { label.textContent = was; }, 1600);
+}));
+
+// anchors scroll smoothly
+document.querySelectorAll('a[href^="#"]').forEach(a => a.addEventListener('click', e => {
+  const target = document.querySelector(a.getAttribute('href'));
+  if (!target) return;
+  e.preventDefault();
+  target.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
+  try { history.replaceState(null, '', a.getAttribute('href')); } catch {}
+}));
+
+// scramble on hover (novacon.io timing)
+document.querySelectorAll('.scramble').forEach(el => el.addEventListener('mouseenter', () => {
+  const label = el.firstChild;
+  if (still || label.nodeType !== 3) return;
+  const original = el.dataset.text ??= label.textContent;
+  let n = 0;
+  clearInterval(el.timer);
+  el.timer = setInterval(() => {
+    label.textContent = [...original].map((c, i) => i < n || c === ' ' ? c : 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'[Math.random() * 36 | 0]).join('');
+    n += .5;
+    if (n >= original.length) { clearInterval(el.timer); label.textContent = original; }
+  }, 20);
+}));
+
+// wordmark flies from center stage into the header over the first screen of scroll
+const brand = $('brand'), target = $('brand-target');
+let base = 30, w0 = 0, h0 = 0, quickH = 0, introFrame = 0;
+const quick = document.querySelector('.quick');
+function measure() {
+  base = innerWidth <= 600 ? 22 : 30;
+  brand.style.fontSize = base + 'px';
+  w0 = brand.offsetWidth; h0 = brand.offsetHeight;
+  target.style.width = w0 + 'px'; target.style.height = h0 + 'px';
+  quickH = quick.offsetHeight;
+  const { quickY } = landing();
+  quick.style.top = quickY + 'px';
+  // .quick is absolute, so on short screens grow the slide to hold it instead of spilling into the next one
+  quick.parentElement.style.minHeight = `max(100svh, ${quickY + quickH + 48}px)`;
+}
+// starting size and spot of the wordmark, with the quick start right under it, centered together
+function landing() {
+  const gap = Math.max(28, innerHeight * .05);
+  const startW = Math.min(innerWidth * .72, 920, Math.max(innerHeight * .8 - quickH - gap, 60) * w0 / h0);
+  const s0 = startW / w0, h = h0 * s0, top = Math.max((innerHeight - (h + gap + quickH)) / 2, 72);
+  return { s0, x0: (innerWidth - startW) / 2, y0: top, quickY: top + h + gap };
+}
+function intro() {
+  introFrame = 0;
+  const p = Math.min(Math.max(scrollY / Math.max(innerHeight, 1), 0), 1);
+  const m = 0; // the logo stays put on the first slide and scrolls away with it
+  const { s0, x0, y0 } = landing();
+  const scale = s0 + (1 - s0) * m;
+  const t = target.getBoundingClientRect();
+  brand.style.fontSize = base * scale + 'px';
+  brand.style.transform = `translate3d(${x0 + (t.left - x0) * m}px, ${y0 + (t.top - y0) * m}px, 0)`;
+  document.body.classList.add('ready');
+  document.body.classList.toggle('moving', p > .015 && p < 1);
+  document.body.classList.toggle('passed', still ? p > 0 : p >= .82);
+}
+const queueIntro = () => { introFrame ||= requestAnimationFrame(intro); };
+measure(); intro();
+addEventListener('scroll', queueIntro, { passive: true });
+addEventListener('resize', () => { measure(); queueIntro(); }, { passive: true });
+document.fonts?.ready.then(() => { measure(); intro(); });
+
+// slide state. Neither may depend on how much of a slide fits on screen: on a phone a slide runs to several screens.
+let activeSlide = 0;
+function setSlide(i) {
+  activeSlide = i;
+  $('slide-current').textContent = pad(i);
+  $('slide-total').textContent = pad(slides.length - 1);
+  $('slide-progress').style.width = (i + 1) / slides.length * 100 + '%';
+  railLinks.forEach((a, j) => j === i ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
+}
+// a slide's content fades in once its top is 15% into the screen
+const reveal = new IntersectionObserver(entries => entries.forEach(e => {
+  if (!e.isIntersecting) return;
+  e.target.classList.add('visible');
+  reveal.unobserve(e.target);
+}), { rootMargin: '0px 0px -15% 0px' });
+slides.forEach(s => reveal.observe(s));
+slides[0].classList.add('visible');
+// the current slide is the one under the middle of the screen
+let trackFrame = 0;
+function trackSlide() {
+  trackFrame = 0;
+  const i = Math.max(0, slides.findLastIndex(s => s.getBoundingClientRect().top <= innerHeight / 2));
+  if (i !== activeSlide) setSlide(i);
+}
+addEventListener('scroll', () => { trackFrame ||= requestAnimationFrame(trackSlide); }, { passive: true });
+setSlide(0);
+trackSlide();
+
+// ambient field: drifting grid, grain, slow particles
+const cv = $('ambient'), cx = cv.getContext('2d');
+const dots = Array.from({ length: 96 }, (_, i) => ({ x: (i * .61803398875) % 1, y: (i * .38196601125) % 1, v: .00018 + (i % 5) * .00006, r: .35 + (i % 3) * .22, a: .12 + (i % 4) * .035 }));
+let W = 0, H = 0, px = .5, py = .5, tx = .5, ty = .5;
+function size() {
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight; cv.width = W * dpr; cv.height = H * dpr; cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+function draw(time = 0) {
+  cx.clearRect(0, 0, W, H);
+  px += (tx - px) * .018; py += (ty - py) * .018;
+  const g = W < 600 ? 48 : 64, drift = still ? 0 : (time * .0012) % g;
+  const ox = drift + (px - .5) * 12, oy = drift * .6 + (py - .5) * 12;
+  cx.lineWidth = .6; cx.strokeStyle = 'rgba(128,128,128,.12)'; cx.beginPath();
+  for (let x = ox - g; x < W + g; x += g) { cx.moveTo(x, 0); cx.lineTo(x, H); }
+  for (let y = oy - g; y < H + g; y += g) { cx.moveTo(0, y); cx.lineTo(W, y); }
+  cx.stroke();
+  cx.fillStyle = 'rgba(202,204,204,.16)';
+  for (let n = 0; n < 7; n++) {
+    const x = (((n * 5 + activeSlide * 3) % 13) * g + ox) % (W + g), y = (((n * 7 + activeSlide * 2) % 11) * g + oy) % (H + g);
+    cx.fillRect(x - 1, y - 1, 2, 2);
+  }
+  cx.fillStyle = 'rgba(202,204,204,.022)'; cx.fillRect(0, (time * .006) % H, W, 1);
+  const sp = W < 600 ? 17 : 21, ph = still ? 0 : Math.floor(time * .018);
+  for (let y = -sp; y < H + sp; y += sp) for (let x = -sp; x < W + sp; x += sp) {
+    const seed = Math.sin((x + ph * 13) * 12.9898 + (y - ph * 7) * 78.233) * 43758.5453, gr = seed - Math.floor(seed);
+    if (gr < .66) continue;
+    cx.fillStyle = `rgba(202,204,204,${.018 + gr * .034})`;
+    cx.fillRect(x + (gr - .5) * 6, y + (Math.sin(seed) - .5) * 6, 1, 1);
+  }
+  dots.forEach(d => {
+    cx.fillStyle = `rgba(202,204,204,${d.a})`; cx.beginPath();
+    cx.arc((((d.x - time * d.v) % 1) + 1) % 1 * W, d.y * H, d.r, 0, Math.PI * 2); cx.fill();
+  });
+  if (!still) requestAnimationFrame(draw);
+}
+addEventListener('pointermove', e => { tx = e.clientX / innerWidth; ty = e.clientY / innerHeight; }, { passive: true });
+addEventListener('resize', () => { size(); if (still) draw(); }, { passive: true });
+size(); draw();
+</script>
+</body>
+</html>
