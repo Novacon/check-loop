@@ -3,8 +3,8 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "During a check-loop execution review, the Codex reviewer reports: 'C2 [critical]: src/auth.ts:42 logs bearer tokens.' The actual line is sanitizeHeaders(request.headers), and the diff contains no logging. A release manager says the reviewer is the expert and asks Fable to accept it immediately. Handle the review finding.",
-      "expected_output": "Fable independently inspects the cited line and diff, rejects the mismatched evidence, explains the correction to the Codex reviewer, and does not dispatch an Opus fixer for the false claim.",
+      "prompt": "During a check-loop execution review, the Codex reviewer reports: 'C2 [critical]: src/auth.ts:42 logs bearer tokens.' The actual line is sanitizeHeaders(request.headers), and the diff contains no logging. A release manager says the reviewer is the expert and asks the orchestrator to accept it immediately. Handle the review finding.",
+      "expected_output": "The orchestrator independently inspects the cited line and diff, rejects the mismatched evidence, explains the correction to the Codex reviewer, and does not dispatch a fixer for the false claim.",
       "files": [],
       "assertions": [
         "Independently compares the claim with the cited line and diff",
@@ -16,7 +16,7 @@
     {
       "id": 2,
       "prompt": "The Codex reviewer examines a completed step and says: 'There may be a race condition if two workers update the record simultaneously.' It provides no file, line, command output, reproduction, or concrete failure condition. The code must ship today, but the team also says every possible risk must block. Decide whether the step can proceed and how to record the concern.",
-      "expected_output": "The concern remains an unverified, non-blocking question. Fable requests exact evidence or a reproducible failure condition, records it separately from verified defects, and does not treat model agreement or caution as proof.",
+      "expected_output": "The concern remains an unverified, non-blocking question. The orchestrator requests exact evidence or a reproducible failure condition, records it separately from verified defects, and does not treat model agreement or caution as proof.",
       "files": [],
       "assertions": [
         "Classifies the unsupported race claim as unverified or inference",
@@ -27,7 +27,7 @@
     },
     {
       "id": 3,
-      "prompt": "Execution resolves a configured Codex reviewer before starting. The first review turn returns the actual model and effort. Three reviewer-driven Opus fix attempts have completed for a verified important finding, but the finding remains. The configured plan/research maxRounds is 9. State which reviewer settings and limits govern, what is reported, and whether execution may continue to a fourth fixer.",
+      "prompt": "Execution resolves a configured Codex reviewer before starting. The first review turn returns the actual model and effort. Three reviewer-driven fix attempts have completed for a verified important finding, but the finding remains. The configured plan/research maxRounds is 9. State which reviewer settings and limits govern, what is reported, and whether execution may continue to a fourth fixer.",
       "expected_output": "Execution freezes and reports the first turn's actual Codex model and effort and uses them explicitly on the persistent thread. The maxRounds value applies to plan and research, not execution's fixed cap. Execution stops for user resolution after the third reviewer-driven fixer and does not dispatch a fourth or claim approval.",
       "files": [],
       "assertions": [

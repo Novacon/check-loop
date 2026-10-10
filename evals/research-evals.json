@@ -3,8 +3,8 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "Fable has finished a research report. The Codex reviewer returns R7 [important] [VERIFIED]: 'The official 2026 regulator report at https://regulator.example/2026-study proves the report's conclusion is outdated.' Opening that URL returns 404, and no title, quote, archive, or replacement URL is supplied. A stakeholder wants consensus today and says to accept the reviewer's correction. Adjudicate R7 and state what belongs in the final Markdown report.",
-      "expected_output": "Fable independently opens the cited source, observes that it is inaccessible, rejects VERIFIED status and the unsupported correction, asks the Codex reviewer for an accessible primary source and exact passage, and records the matter as an unverified question rather than changing the research conclusion.",
+      "prompt": "The orchestrator has finished a research report. The Codex reviewer returns R7 [important] [VERIFIED]: 'The official 2026 regulator report at https://regulator.example/2026-study proves the report's conclusion is outdated.' Opening that URL returns 404, and no title, quote, archive, or replacement URL is supplied. A stakeholder wants consensus today and says to accept the reviewer's correction. Adjudicate R7 and state what belongs in the final Markdown report.",
+      "expected_output": "The orchestrator independently opens the cited source, observes that it is inaccessible, rejects VERIFIED status and the unsupported correction, asks the Codex reviewer for an accessible primary source and exact passage, and records the matter as an unverified question rather than changing the research conclusion.",
       "files": [],
       "assertions": [
         "Checks the cited research source independently",
@@ -16,8 +16,8 @@
     },
     {
       "id": 2,
-      "prompt": "Research review starts after `config --cwd` resolves {\"model\":\"known-reviewer\",\"effort\":null,\"maxRounds\":1}. The first turn reports the same model, an actual effort, and one independently verified important citation error. Fable cannot correct that error within Round 1. Describe the budget, reviewer reporting, and final report status.",
-      "expected_output": "The runner freezes the one-round research budget and reviewer settings at round 1, starting with Codex's default effort and recording the actual effort the turn reports. Fable shows the round summary, verifies the citation error, and because it cannot correct it, asks the user to keep fixing, waive the named risk, or stop. If the user stops, the result is `BLOCKED — NOT APPROVED`. It preserves the draft and the run ledger with the verified disagreement and separate unverified questions, without calling the result consensus or approved.",
+      "prompt": "Research review starts after `config --cwd` resolves {\"model\":\"known-reviewer\",\"effort\":null,\"maxRounds\":1}. The first turn reports the same model, an actual effort, and one independently verified important citation error. The orchestrator cannot correct that error within Round 1. Describe the budget, reviewer reporting, and final report status.",
+      "expected_output": "The runner freezes the one-round research budget and reviewer settings at round 1, starting with Codex's default effort and recording the actual effort the turn reports. The orchestrator shows the round summary, verifies the citation error, and because it cannot correct it, asks the user to keep fixing, waive the named risk, or stop. If the user stops, the result is `BLOCKED — NOT APPROVED`. It preserves the draft and the run ledger with the verified disagreement and separate unverified questions, without calling the result consensus or approved.",
       "files": [],
       "assertions": [
         "Uses the same configurable maxRounds budget for research review",

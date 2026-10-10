@@ -1,7 +1,7 @@
 {
   "name": "check-loop",
-  "version": "5.0.0",
-  "description": "Fable-orchestrated plan refinement, research, and execution with Opus implementers and configurable Codex review",
+  "version": "5.1.0",
+  "description": "Plan refinement, research, and execution with fresh implementer subagents and configurable Codex review",
   "author": {
     "name": "lordknows13"
   },

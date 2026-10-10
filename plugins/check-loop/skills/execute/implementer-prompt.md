@@ -1,11 +1,11 @@
-# Opus implementer prompt
+# Implementer prompt
 
-Use this template for every implementation or accepted-finding fix. Create a fresh subagent each time.
+Use this template for every implementation or accepted-finding fix. Create a fresh subagent each time. In pi, send the same prompt through `subagent` with `agent: "worker"`, `context: "fresh"`, and the resolved implementer model.
 
 ```text
 Agent tool:
   subagent_type: "general-purpose"
-  model: "opus"
+  model: IMPLEMENTER_MODEL   # omit when implementerModel is null
   description: "Implement Step N: STEP_NAME"
   prompt: |
     Implement Step N of M: STEP_NAME
@@ -38,7 +38,7 @@ Agent tool:
     4. Preserve unrelated user changes.
     5. Add or update tests only when the step changes an uncovered observable contract.
     6. Self-review the actual diff against every acceptance criterion.
-    7. Do not stage or commit. Fable owns review scope and the final user approval gate.
+    7. Do not stage or commit. The orchestrator owns review scope and the final user approval gate.
 
     If requirements, dependencies, or scope are unclear, stop instead of guessing.
 
@@ -52,4 +52,4 @@ Agent tool:
     - Concerns or missing context
 ```
 
-For a fix, replace the step contract with the current step contract plus only the independently verified finding and Fable's accepted or countered correction. Do not ask the fixer to address rejected, inferred, or unverified findings.
+For a fix, replace the step contract with the current step contract plus only the independently verified finding and the orchestrator's accepted or countered correction. Do not ask the fixer to address rejected, inferred, or unverified findings.

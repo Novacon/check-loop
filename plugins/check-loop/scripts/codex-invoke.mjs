@@ -360,12 +360,16 @@ function handleSetup(argv) {
 
 function handleConfig(argv) {
   const options = parseCommandArgs(argv, {
-    valueOptions: ["cwd", "model", "effort", "max-rounds"],
+    valueOptions: ["cwd", "model", "effort", "max-rounds", "implementer-model"],
     booleanOptions: ["project"],
   }, "config");
 
   const cwd = resolveCwd(options);
   const updates = reviewOverrides(options, true);
+  if (hasOwn(options, "implementer-model")) {
+    const value = options["implementer-model"];
+    updates.implementerModel = value === "default" ? null : value;
+  }
   const config = Object.keys(updates).length > 0
     ? updateReviewConfig(cwd, updates, { project: options.project === true })
     : resolveReviewConfig(cwd);
@@ -382,7 +386,7 @@ async function main() {
   if (!subcommand || subcommand === "help" || subcommand === "--help") {
     process.stdout.write([
       "Usage:",
-      "  node codex-invoke.mjs config [--cwd <path>] [--project] [--model <id|default>] [--effort <level|default>] [--max-rounds <1..40>]",
+      "  node codex-invoke.mjs config [--cwd <path>] [--project] [--model <id|default>] [--effort <level|default>] [--max-rounds <1..40>] [--implementer-model <id|default>]",
       "  node codex-invoke.mjs round --artifact <path> [--kind plan|research] [--request-file <path>] [--adjudication-file <path>] [--new] [--closeout] [--model <id|default>] [--effort <level|default>] [--max-rounds <1..40>] [--timeout-minutes <n>] [--cwd <path>]",
       "  node codex-invoke.mjs report --artifact <path> [--cwd <path>]",
       "  node codex-invoke.mjs turn (--prompt <text> | --prompt-file <path|->) [--thread-id <id>] [--cwd <path>] [--model <id|default>] [--effort <level|default>] [--timeout-minutes <n>]",
@@ -390,6 +394,7 @@ async function main() {
       "  node codex-invoke.mjs setup [--cwd <path>] [--model <id|default>] [--effort <level|default>] [--max-rounds <1..40>]",
       "",
       "Reviewer model and effort default to the effective Codex settings. Reviewer turns time out after 20 minutes by default.",
+      "Implementer model defaults to the session model (null); it is only read by the execute skill.",
       "",
     ].join("\n"));
     return;

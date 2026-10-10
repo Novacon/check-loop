@@ -2,11 +2,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const SETTING_KEYS = ["model", "effort", "maxRounds"];
+const SETTING_KEYS = ["model", "effort", "maxRounds", "implementerModel"];
 const DEFAULT_SETTINGS = Object.freeze({
   model: null,
   effort: null,
   maxRounds: 6,
+  implementerModel: null,
 });
 
 function hasOwn(value, key) {
@@ -38,7 +39,7 @@ function validateSettings(settings, source) {
     }
   }
 
-  for (const key of ["model", "effort"]) {
+  for (const key of ["model", "effort", "implementerModel"]) {
     if (!hasOwn(settings, key)) {
       continue;
     }

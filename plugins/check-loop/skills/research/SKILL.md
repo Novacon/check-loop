@@ -1,20 +1,18 @@
 ---
 name: research
 description: Researches questions when they need current sources, explicit uncertainty, adversarial fact-checking, or evidence-backed consensus in a Markdown deliverable.
-model: fable
-effort: xhigh
-argument-hint: [--quick] [research-question]
+argument-hint: "[--quick] [research-question]"
 ---
 
-# Fable-Codex research
+# Codex-reviewed research
 
 ## Overview
 
-Fable performs the requested research, writes the report, and owns every conclusion. The configured Codex reviewer peer-reviews the completed draft in one persistent read-only thread. `codex-invoke.mjs round` runs the loop mechanics (prompts, secret redaction, diffs, finding IDs, ledger, repeat suppression, stall detection, round limit, resumable state). Fable checks sources, decides, and revises.
+The orchestrator performs the requested research, writes the report, and owns every conclusion. The configured Codex reviewer peer-reviews the completed draft in one persistent read-only thread. `codex-invoke.mjs round` runs the loop mechanics (prompts, secret redaction, diffs, finding IDs, ledger, repeat suppression, stall detection, round limit, resumable state). The orchestrator checks sources, decides, and revises.
 
 **Core principle:** No evidence, no blocking finding. Model agreement is not research evidence.
 
-**Shape of a run:** round 1 is the one broad fact-check. Later rounds only confirm Fable's corrections and check the changed text. A later round can raise a new blocker only for an error introduced by the revision or a VERIFIED critical error round 1 missed.
+**Shape of a run:** round 1 is the one broad fact-check. Later rounds only confirm the orchestrator's corrections and check the changed text. A later round can raise a new blocker only for an error introduced by the revision or a VERIFIED critical error round 1 missed.
 
 Produce one final Markdown report. Do not implement code, create an implementation plan, or dispatch implementation subagents.
 
@@ -32,7 +30,9 @@ Keep working notes in context rather than producing sidecar deliverables. The fi
 
 ## Preflight
 
-This skill's frontmatter selects Fable at `xhigh`. Stop if Claude Code reports that `fable` was rejected, unavailable, or replaced.
+This skill runs on the session's current model and effort; it does not switch models.
+
+**In pi:** pi does not substitute `${CLAUDE_PLUGIN_ROOT}`; replace it with the absolute path two directories above this SKILL.md. `$ARGUMENTS` is the text appended after `/skill:NAME`.
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" setup --cwd "$(pwd)"
@@ -40,7 +40,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" setup --cwd "$(pwd)"
 
 Proceed only when setup reports `Status: ready`. The first round freezes the reviewer model, effort, and round limit for the run.
 
-## Phase 1: Fable researches and drafts
+## Phase 1: The orchestrator researches and drafts
 
 Research the question completely before asking Codex to review it.
 
@@ -62,7 +62,7 @@ Do not broaden the assignment into adjacent research the user did not request.
 - For current claims, retrieve current sources rather than relying on model memory.
 - Record the source URL or repository location, publication or version date when relevant, and the exact passage supporting each material claim.
 - Corroborate consequential claims when independent evidence is available.
-- Distinguish source facts, Fable's inferences, and unresolved unknowns.
+- Distinguish source facts, the orchestrator's inferences, and unresolved unknowns.
 - Do not cite a search-result snippet as evidence.
 
 ### Write the first draft
@@ -104,7 +104,7 @@ The command prints one JSON object with `status`, `next`, `summary`, `blockers`,
 
 A failed, timed-out, empty, or malformed reviewer turn is an incomplete review, never "no findings."
 
-## Phase 3: Fable adjudicates and revises
+## Phase 3: The orchestrator adjudicates and revises
 
 For each blocker:
 
@@ -165,6 +165,6 @@ Pause that finding when it relies on:
 - A stale source for a time-sensitive claim.
 - A search snippet rather than source content.
 - A conclusion stronger than the cited passage.
-- Agreement between Fable and Codex instead of external evidence.
+- Agreement between the orchestrator and Codex instead of external evidence.
 
 Reclassify, correct, or reject the finding before continuing.

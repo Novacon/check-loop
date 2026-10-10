@@ -42,28 +42,38 @@ test("reviewer settings merge per key and command overrides can reset to Codex d
   const w = workspace(t);
   w.write(w.userFile, { model: "reviewer-user", effort: "high", maxRounds: 9 });
   w.write(w.projectFile, { model: "reviewer-project" });
-  assert.deepEqual(w.config(), { model: "reviewer-project", effort: "high", maxRounds: 9 });
+  assert.deepEqual(w.config(), { model: "reviewer-project", effort: "high", maxRounds: 9, implementerModel: null });
 
   assert.deepEqual(w.config("--project", "--model", "reviewer-selected", "--effort", "medium"), {
-    model: "reviewer-selected", effort: "medium", maxRounds: 9,
+    model: "reviewer-selected", effort: "medium", maxRounds: 9, implementerModel: null,
   });
   assert.deepEqual(JSON.parse(readFileSync(w.userFile, "utf8")), {
     model: "reviewer-user", effort: "high", maxRounds: 9,
   });
 
   assert.deepEqual(w.config("--project", "--model", "default", "--effort", "default"), {
-    model: null, effort: null, maxRounds: 9,
+    model: null, effort: null, maxRounds: 9, implementerModel: null,
   });
-  assert.deepEqual(w.config(), { model: null, effort: null, maxRounds: 9 });
+  assert.deepEqual(w.config(), { model: null, effort: null, maxRounds: 9, implementerModel: null });
 });
 
 test("changing one saved setting preserves other reviewer choices", (t) => {
   const w = workspace(t);
   w.write(w.userFile, { model: "reviewer-chosen", effort: "high", maxRounds: 12 });
   assert.deepEqual(w.config("--max-rounds", "4"), {
-    model: "reviewer-chosen", effort: "high", maxRounds: 4,
+    model: "reviewer-chosen", effort: "high", maxRounds: 4, implementerModel: null,
   });
-  assert.deepEqual(w.config(), { model: "reviewer-chosen", effort: "high", maxRounds: 4 });
+  assert.deepEqual(w.config(), { model: "reviewer-chosen", effort: "high", maxRounds: 4, implementerModel: null });
+});
+
+test("implementer model inherits the session model by default and can be saved or reset", (t) => {
+  const w = workspace(t);
+  assert.equal(w.config().implementerModel, null);
+  assert.equal(w.config("--implementer-model", "sonnet").implementerModel, "sonnet");
+  assert.equal(JSON.parse(readFileSync(w.userFile, "utf8")).implementerModel, "sonnet");
+  assert.equal(w.config("--project", "--implementer-model", "default").implementerModel, null);
+  assert.equal(JSON.parse(readFileSync(w.userFile, "utf8")).implementerModel, "sonnet");
+  assert.notEqual(w.run("config", "--implementer-model", "").status, 0);
 });
 
 test("--cwd resolves the target project's overrides rather than the caller's", (t) => {

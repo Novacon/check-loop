@@ -1,18 +1,16 @@
 ---
 name: execute
 description: Executes approved multi-step plans when they need isolated implementation workers, repository-native validation, and adversarial review before commit or push.
-model: fable
-effort: xhigh
-argument-hint: [plan-path]
+argument-hint: "[plan-path]"
 ---
 
-# Fable-orchestrated plan execution
+# Supervised plan execution
 
 ## Overview
 
-Fable owns the plan, review scope, validation, and decisions. A fresh Opus subagent implements or fixes one bounded step. The configured Codex reviewer reviews every step in one persistent read-only thread.
+The orchestrator owns the plan, review scope, validation, and decisions. A fresh subagent implements or fixes one bounded step. The configured Codex reviewer reviews every step in one persistent read-only thread.
 
-**Core principle:** No evidence, no blocking finding. Review output is a claim until Fable checks its cited source.
+**Core principle:** No evidence, no blocking finding. Review output is a claim until the orchestrator checks its cited source.
 
 Do not commit or push before explicit user approval.
 
@@ -28,11 +26,11 @@ PREPARE
 
 FOR EACH STEP
   Define the step contract and take a working-tree snapshot.
-  Dispatch one fresh Opus implementer.
+  Dispatch one fresh implementer.
   Inspect the actual changes and run repository-native validation.
   Send the step contract, filtered diff, context, and results to Codex.
   Independently verify and adjudicate every finding.
-  For an accepted blocking finding, dispatch a fresh Opus fixer and repeat.
+  For an accepted blocking finding, dispatch a fresh fixer and repeat.
 
 FINALIZE
   Run full repository verification and the changed surface.
@@ -56,7 +54,9 @@ Lock the plan for execution. A wrong or impossible step requires user input; do 
 
 ### Required models and reviewer configuration
 
-This skill's frontmatter selects Fable at `xhigh`. Stop if Claude Code reports that `fable` was rejected, unavailable, or replaced. Reviewer settings do not change Fable or Opus.
+This skill runs on the session's current model and effort; it does not switch models. Reviewer settings do not change the session model.
+
+**In pi:** pi does not substitute `${CLAUDE_PLUGIN_ROOT}`; replace it with the absolute path two directories above this SKILL.md. `$ARGUMENTS` is the text appended after `/skill:NAME`.
 
 Resolve reviewer settings for the current working directory:
 
@@ -64,7 +64,7 @@ Resolve reviewer settings for the current working directory:
 node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" config --cwd "$(pwd)"
 ```
 
-The JSON result contains `model`, `effort`, and `maxRounds`. Freeze the model and effort for this execution. Use literal `default` for a null value. `maxRounds` governs plan and research review loops; report that execution instead keeps its fixed cap of three reviewer-driven fix attempts so the setting is not silently misapplied.
+The JSON result contains `model`, `effort`, `maxRounds`, and `implementerModel`. `implementerModel` is not a reviewer setting: null means implementers and fixers inherit the session model; a string is the model to request for them. Freeze the model and effort for this execution. Use literal `default` for a null value. `maxRounds` governs plan and research review loops; report that execution instead keeps its fixed cap of three reviewer-driven fix attempts so the setting is not silently misapplied.
 
 Run:
 
@@ -87,7 +87,7 @@ If any working-tree changes are present, ask the user to choose:
 1. Execute in an isolated worktree created from the recorded HEAD, leaving the original dirty tree untouched.
 2. Explicitly include the named existing changes in this execution.
 
-Keep the baseline paths and diff separate from execution-produced changes, even when the user authorizes inclusion. Never present baseline work as Opus output or include it in a commit unless the user's choice explicitly covers it. Never hide, discard, stage, or silently include existing work. Keep all execution changes uncommitted until final approval.
+Keep the baseline paths and diff separate from execution-produced changes, even when the user authorizes inclusion. Never present baseline work as implementer output or include it in a commit unless the user's choice explicitly covers it. Never hide, discard, stage, or silently include existing work. Keep all execution changes uncommitted until final approval.
 
 Before sending any plan, instruction, diff, validation output, or follow-up to Codex, inspect it and redact secret or credential values. Omit contents from `*.env*`, `*.secret*`, `*credentials*`, `**/secrets/**`, ignored environment files, binary payloads, and dependency caches. Name an omitted path only when Codex needs the omission context; never include its content.
 
@@ -106,7 +106,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn \
 Initial prompt:
 
 ```text
-Act as Codex, the adversarial reviewer for an approved implementation plan owned by Fable.
+Act as Codex, the adversarial reviewer for an approved implementation plan owned by the orchestrator.
 
 Configured reviewer setting: model MODEL_SETTING_OR_DEFAULT; effort EFFORT_SETTING_OR_DEFAULT.
 
@@ -148,7 +148,7 @@ The command prints JSON:
 {"threadId":"...","response":"...","model":"...","effort":"...","status":0,"error":null}
 ```
 
-For the initial acknowledgment and every step, fix, or final review, require a zero command exit, `status: 0`, `error: null`, and substantive output appropriate to that phase. A failed, empty, or malformed review is incomplete—not approval or "no findings." Preserve the working tree, report the actionable error, and stop; do not substitute Fable's own review for missing Codex output. Preserve the reviewer's citations and uncertainty labels, keeping Fable's adjudication separate.
+For the initial acknowledgment and every step, fix, or final review, require a zero command exit, `status: 0`, `error: null`, and substantive output appropriate to that phase. A failed, empty, or malformed review is incomplete—not approval or "no findings." Preserve the working tree, report the actionable error, and stop; do not substitute the orchestrator's own review for missing Codex output. Preserve the reviewer's citations and uncertainty labels, keeping the orchestrator's adjudication separate.
 
 Save the returned `threadId`, `model`, and `effort`. The returned model and effort are the actual settings: show them in step and final reports. Continue the same thread for every step, passing those actual values explicitly when non-null. If a returned value is null, use literal `default` and report `Codex default (not reported)` rather than inventing a value:
 
@@ -179,32 +179,36 @@ Write down:
 
 Take a pre-step working-tree snapshot. The review scope is the delta between that snapshot and the post-implementation state, including new files. Do not use the staging area to manufacture review scope.
 
-### 2. Dispatch a fresh Opus implementer
+### 2. Dispatch a fresh implementer
 
 Use `./implementer-prompt.md`. The invocation must select:
 
 ```text
 Agent tool:
   subagent_type: "general-purpose"
-  model: "opus"
+  model: IMPLEMENTER_MODEL   # omit when implementerModel is null
 ```
+
+In pi, use the `subagent` tool with `agent: "worker"` and `context: "fresh"`. Pass `model`: the configured `implementerModel`, or the session's current provider/id when it is null. Take exact IDs from `{action: "models"}`.
+
+If an explicit `implementerModel` is rejected or unavailable, stop and report it rather than substituting another model.
 
 Supply the full step contract, relevant context, working directory, repository instructions, and the pre-step snapshot. Do not make the subagent rediscover the plan.
 
-Use a fresh Opus subagent for each implementation or fix. Never run overlapping implementers against the same files.
+Use a fresh subagent for each implementation or fix. Never run overlapping implementers against the same files.
 
 Handle its status:
 
 - `DONE`: inspect the result.
 - `DONE_WITH_CONCERNS`: inspect the result and resolve correctness or scope concerns first.
-- `NEEDS_CONTEXT`: gather the missing repository context and dispatch a fresh Opus subagent.
+- `NEEDS_CONTEXT`: gather the missing repository context and dispatch a fresh subagent.
 - `BLOCKED`: change the context or step decomposition. If the approved plan itself is wrong, ask the user.
 
 Do not retry an unchanged prompt after a blocker.
 
 ### 3. Inspect and validate
 
-Fable must:
+The orchestrator must:
 
 1. Read the changed files and compare them with the step contract.
 2. Confirm that unrelated user changes remain untouched.
@@ -212,7 +216,7 @@ Fable must:
 4. Exercise the changed surface when a runtime is available.
 5. Record exact command output, failures, and skipped checks.
 
-Fix validation failures before external review. Give each fresh Opus fixer the exact failure output and acceptance criteria. After three unsuccessful validation-fix attempts, stop and ask the user.
+Fix validation failures before external review. Give each fresh fixer the exact failure output and acceptance criteria. After three unsuccessful validation-fix attempts, stop and ask the user.
 
 ### 4. Build the review packet
 
@@ -261,7 +265,7 @@ STEP APPROVED
 
 ### 5. Adjudicate evidence
 
-Only VERIFIED critical or important findings may block a step, and Fable must independently verify the cited source first.
+Only VERIFIED critical or important findings may block a step, and the orchestrator must independently verify the cited source first.
 
 For every finding:
 
@@ -280,7 +284,7 @@ Reject invented, stale, mismatched, or inaccessible citations. Supply missing co
 Continue the thread with:
 
 ```text
-Fable independently checked every cited source.
+The orchestrator independently checked every cited source.
 
 Adjudication:
 - F1: ACCEPTED -- verified evidence and reason
@@ -300,7 +304,7 @@ Complete the step when Codex returns `STEP APPROVED` or when no independently ve
 For each accepted or countered blocking finding:
 
 1. Before dispatching, snapshot the working tree (the fix base).
-2. Dispatch a fresh Opus fixer with the verified finding, chosen correction, step contract, and current context.
+2. Dispatch a fresh fixer with the verified finding, chosen correction, step contract, and current context.
 3. Inspect the fix.
 4. Re-run step validation.
 5. Send a fix re-review in the same Codex thread. Do not resend the step diff: the reviewer has already reviewed everything outside the fix.
@@ -311,7 +315,7 @@ Fix re-review packet:
 Re-review the fix for Step N. Review only the fix delta below; do not re-review code outside it.
 
 Findings being fixed:
-- F3 [important] TITLE -- Fable's chosen correction
+- F3 [important] TITLE -- the orchestrator's chosen correction
 
 For each listed finding, answer ADDRESSED or NOT ADDRESSED with evidence from the fix delta. Report a new finding only if the fix delta itself introduces it, using the evidence contract.
 
@@ -329,13 +333,13 @@ If every listed finding is addressed and the delta adds no concern, respond exac
 STEP APPROVED
 ```
 
-Dispatch at most three reviewer-driven Opus fixers for a step. If verified critical or important findings remain after the third fix attempt, stop and ask the user to resolve them. Do not escalate unsupported hypotheses as defects.
+Dispatch at most three reviewer-driven fixers for a step. If verified critical or important findings remain after the third fix attempt, stop and ask the user to resolve them. Do not escalate unsupported hypotheses as defects.
 
 Report:
 
 ```text
 Step N: COMPLETE
-Implementation: Opus
+Implementation: IMPLEMENTER_MODEL or session model
 Validation: commands and outcomes
 Codex (model ACTUAL_MODEL; effort ACTUAL_EFFORT): STEP APPROVED [after N fix attempts] | no verified blockers after adjudication
 Adjudication: accepted F... | rejected F... | countered F...
@@ -359,9 +363,9 @@ Require the evidence contract for every concern and this exact response when no 
 FINAL APPROVED -- No verified blocking findings.
 ```
 
-Treat the final review output as claims, not proof. Fable must independently verify every cited source and reconstruct each concern using the evidence contract before it can block. Missing evidence makes the item nonblocking.
+Treat the final review output as claims, not proof. The orchestrator must independently verify every cited source and reconstruct each concern using the evidence contract before it can block. Missing evidence makes the item nonblocking.
 
-Use the same accept, reject, and counter rules. Dispatch at most three reviewer-driven Opus fixers during final review; after each accepted fix, re-run full verification and send a fix re-review packet (the findings being fixed plus the filtered fix delta and new validation output), not a new full packet. If a verified blocker remains after the third fix attempt, stop for user resolution.
+Use the same accept, reject, and counter rules. Dispatch at most three reviewer-driven fixers during final review; after each accepted fix, re-run full verification and send a fix re-review packet (the findings being fixed plus the filtered fix delta and new validation output), not a new full packet. If a verified blocker remains after the third fix attempt, stop for user resolution.
 
 ## Final approval gate
 
@@ -387,8 +391,8 @@ If approved, create only the requested commit or commits and push only the reque
 
 | Responsibility | Owner |
 |---|---|
-| Plan, step contracts, validation, evidence checks | Fable |
-| Implementation and accepted fixes | Fresh Opus subagent |
+| Plan, step contracts, validation, evidence checks | The orchestrator |
+| Implementation and accepted fixes | Fresh subagent on `implementerModel` (session model when null) |
 | Adversarial review | Configured Codex reviewer |
 | Commit and push authorization | User |
 
@@ -403,20 +407,20 @@ If approved, create only the requested commit or commits and push only the reque
 
 | Mistake | Correct action |
 |---|---|
-| Letting an implementer stage or commit | Keep review scope and git ownership with Fable. |
+| Letting an implementer stage or commit | Keep review scope and git ownership with the orchestrator. |
 | Hiding a dirty tree | Ask for isolation or explicit inclusion. |
 | Using generic framework standards | Read and enforce repository-native instructions. |
 | Accepting a severe finding on confidence | Independently inspect its evidence. |
 | Treating two-model agreement as proof | Verify the source and failure condition. |
 | Blocking on a plausible race | Keep it inference until directly supported or reproduced. |
 | Sending the whole repository to review | Send the smallest sufficient filtered packet. |
-| Reusing an implementer context | Dispatch a fresh Opus subagent for each implementation or fix. |
+| Reusing an implementer context | Dispatch a fresh subagent for each implementation or fix. |
 
 ## Rationalization counters
 
 | Rationalization | Counter |
 |---|---|
-| "Codex probably checked the line." | Fable opens the current source. |
+| "Codex probably checked the line." | The orchestrator opens the current source. |
 | "Better safe than sorry." | Unsupported changes create risk; verify first. |
 | "Both models agree." | Agreement is not evidence. |
 | "The deadline makes staging harmless." | Staging changes review scope and user state. |

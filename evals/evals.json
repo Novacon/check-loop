@@ -14,8 +14,8 @@
     },
     {
       "id": 2,
-      "prompt": "Plan review runs with a configured limit of 2 rounds. Round 1 returns reviewer model `reviewer-model`, effort `high`, and verified blocker F1, which Fable accepts and fixes. Round 2 reports F1 NOT_ADDRESSED; Fable accepts it again and edits the plan. Describe the next `round` call's result, what Fable shows the user, and the final status options.",
-      "expected_output": "The runner froze the 2-round limit and reviewer settings at round 1 and reused the same thread with the actual model and effort. After the second fix, the next `round` call does not spend a reviewer turn: it returns `next: cap` with outcome `FIXES APPLIED — UNCONFIRMED`. Fable shows the summary and asks the user to choose between one closeout round, accepting as is, or stopping. It never reports approval and never starts a `--new` run to bypass the limit.",
+      "prompt": "Plan review runs with a configured limit of 2 rounds. Round 1 returns reviewer model `reviewer-model`, effort `high`, and verified blocker F1, which the orchestrator accepts and fixes. Round 2 reports F1 NOT_ADDRESSED; the orchestrator accepts it again and edits the plan. Describe the next `round` call's result, what the orchestrator shows the user, and the final status options.",
+      "expected_output": "The runner froze the 2-round limit and reviewer settings at round 1 and reused the same thread with the actual model and effort. After the second fix, the next `round` call does not spend a reviewer turn: it returns `next: cap` with outcome `FIXES APPLIED — UNCONFIRMED`. The orchestrator shows the summary and asks the user to choose between one closeout round, accepting as is, or stopping. It never reports approval and never starts a `--new` run to bypass the limit.",
       "files": [],
       "assertions": [
         "Relies on the runner's frozen limit and reviewer settings rather than re-resolving them",
@@ -27,8 +27,8 @@
     },
     {
       "id": 3,
-      "prompt": "Round 2 of a plan review returns: F1 ADDRESSED, plus a new VERIFIED critical finding with origin `new` about a part of the plan that did not change, and a VERIFIED important finding with origin `regression` that cites a line Fable added in the fix. What blocks, what happens to the other finding, and should Fable send the whole plan again?",
-      "expected_output": "Only the regression finding is a blocker, because closure rounds block only on regressions in the diff or a missed VERIFIED critical defect marked `missed`. The `new` finding about unchanged text is recorded as a nonblocking note and stays visible in the report. Fable adjudicates the regression with evidence, makes the smallest fix, and calls `round` again; the runner sends only the diff and the open ledger, never the whole plan.",
+      "prompt": "Round 2 of a plan review returns: F1 ADDRESSED, plus a new VERIFIED critical finding with origin `new` about a part of the plan that did not change, and a VERIFIED important finding with origin `regression` that cites a line the orchestrator added in the fix. What blocks, what happens to the other finding, and should the orchestrator send the whole plan again?",
+      "expected_output": "Only the regression finding is a blocker, because closure rounds block only on regressions in the diff or a missed VERIFIED critical defect marked `missed`. The `new` finding about unchanged text is recorded as a nonblocking note and stays visible in the report. The orchestrator adjudicates the regression with evidence, makes the smallest fix, and calls `round` again; the runner sends only the diff and the open ledger, never the whole plan.",
       "files": [],
       "assertions": [
         "Treats the regression finding as the only blocker",

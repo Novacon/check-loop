@@ -3,7 +3,7 @@
 // The runner owns everything that should not depend on a model following prose:
 // prompt construction, secret redaction, the reviewed snapshot and diff, finding
 // IDs, the decision ledger, duplicate suppression, the re-raise budget, stall
-// detection, round limits, and durable run state. Fable owns evidence checks,
+// detection, round limits, and durable run state. The orchestrator owns evidence checks,
 // decisions, and artifact edits.
 
 import { createHash } from "node:crypto";
@@ -250,7 +250,7 @@ export function parseReviewOutput(text) {
 // ---------------------------------------------------------------------------
 
 /**
- * Apply Fable's decisions to the pending blockers. Every pending ID needs a
+ * Apply the orchestrator's decisions to the pending blockers. Every pending ID needs a
  * decision and a reason; unknown or non-pending IDs are rejected so a typo
  * cannot silently leave a blocker undecided.
  */
@@ -443,7 +443,7 @@ function researchCriteria() {
 export function buildDiscoveryPrompt(run, artifactText) {
   const kind = KINDS[run.kind];
   const criteria = run.kind === "plan" ? planCriteria() : researchCriteria();
-  return `Act as Codex, the adversarial reviewer of a ${kind.noun} owned by Fable. Review only; do not edit files or rewrite the ${kind.tag}.
+  return `Act as Codex, the adversarial reviewer of a ${kind.noun} owned by the orchestrator. Review only; do not edit files or rewrite the ${kind.tag}.
 
 Round 1 of ${run.settings.maxRounds} (discovery).
 
@@ -469,7 +469,7 @@ ${artifactText}
 }
 
 function describeForConfirmation(finding) {
-  return `- ${finding.id} [${finding.severity}] ${finding.title} (${finding.location}) — Fable: ${finding.decision}: ${finding.reason}`;
+  return `- ${finding.id} [${finding.severity}] ${finding.title} (${finding.location}) — orchestrator: ${finding.decision}: ${finding.reason}`;
 }
 
 export function buildClosurePrompt(run, diffText, { round, closeout }) {
@@ -485,14 +485,14 @@ export function buildClosurePrompt(run, diffText, { round, closeout }) {
 - origin "missed": it is a VERIFIED critical defect that round 1 missed.
 Anything else is out of scope for this round.`;
 
-  return `Round ${round} of ${run.settings.maxRounds}${closeout ? " (closeout)" : " (closure)"}. Fable independently checked every cited source and revised the ${kind.tag}.
+  return `Round ${round} of ${run.settings.maxRounds}${closeout ? " (closeout)" : " (closure)"}. The orchestrator independently checked every cited source and revised the ${kind.tag}.
 
 ${scope}
 
 Findings to confirm (one prior entry each: ADDRESSED or NOT_ADDRESSED, with evidence from the current text):
 ${toConfirm.map(describeForConfirmation).join("\n") || "- none"}
 
-Rejected findings (you may answer REJECTION_DISPUTED once, only with new evidence Fable missed; otherwise omit them):
+Rejected findings (you may answer REJECTION_DISPUTED once, only with new evidence the orchestrator missed; otherwise omit them):
 ${rejected.map(describeForConfirmation).join("\n") || "- none"}
 
 Settled (do not raise again):
@@ -651,7 +651,7 @@ export async function runReviewRound(options) {
     throw new Error(`This run reviews a ${run.kind}, not a ${options.kind}.`);
   }
 
-  // 1. Record Fable's decisions on the previous round's blockers.
+  // 1. Record the orchestrator's decisions on the previous round's blockers.
   let decidedFixes = [];
   if (run.pending.length > 0) {
     if (!options.adjudication) {

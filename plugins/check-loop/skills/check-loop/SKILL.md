@@ -1,20 +1,18 @@
 ---
 name: check-loop
 description: Refines implementation plans when they need adversarial architecture review, assumption checking, simplification, or evidence-backed consensus before implementation.
-model: fable
-effort: xhigh
-argument-hint: [--quick] [plan-path]
+argument-hint: "[--quick] [plan-path]"
 ---
 
-# Fable-Codex plan refinement
+# Codex-reviewed plan refinement
 
 ## Overview
 
-Fable owns the plan. The configured Codex reviewer critiques it in one persistent read-only thread. `codex-invoke.mjs round` runs the loop mechanics: it builds every reviewer prompt, redacts secrets, sends the whole plan only once and a diff afterwards, numbers findings, keeps the decision ledger, suppresses repeats, detects stalls, enforces the round limit, and saves resumable state. Fable checks evidence, decides, and edits the plan.
+The orchestrator owns the plan. The configured Codex reviewer critiques it in one persistent read-only thread. `codex-invoke.mjs round` runs the loop mechanics: it builds every reviewer prompt, redacts secrets, sends the whole plan only once and a diff afterwards, numbers findings, keeps the decision ledger, suppresses repeats, detects stalls, enforces the round limit, and saves resumable state. The orchestrator checks evidence, decides, and edits the plan.
 
-**Core principle:** No evidence, no blocking finding. A confident reviewer statement is still only a claim until Fable checks its source.
+**Core principle:** No evidence, no blocking finding. A confident reviewer statement is still only a claim until the orchestrator checks its source.
 
-**Shape of a run:** round 1 is the one broad review. Every later round only confirms Fable's fixes and checks the changed text for regressions. A later round can raise a new blocker only for a regression in the diff or a VERIFIED critical defect round 1 missed; the runner records anything else as a nonblocking note.
+**Shape of a run:** round 1 is the one broad review. Every later round only confirms the orchestrator's fixes and checks the changed text for regressions. A later round can raise a new blocker only for a regression in the diff or a VERIFIED critical defect round 1 missed; the runner records anything else as a nonblocking note.
 
 ## Input
 
@@ -26,7 +24,9 @@ Read the complete plan, the original user request, and the repository files need
 
 ## Preflight
 
-This skill's frontmatter selects Fable at `xhigh`. Stop if Claude Code reports that `fable` was rejected, unavailable, or replaced.
+This skill runs on the session's current model and effort; it does not switch models.
+
+**In pi:** pi does not substitute `${CLAUDE_PLUGIN_ROOT}`; replace it with the absolute path two directories above this SKILL.md. `$ARGUMENTS` is the text appended after `/skill:NAME`.
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" setup --cwd "$(pwd)"
@@ -87,7 +87,7 @@ For every blocker in `blockers`:
 3. Decide:
    - `ACCEPT`: verified, and the correction improves the plan.
    - `REJECT`: contradicted, unsupported, irrelevant, or preference-only.
-   - `COUNTER`: verified concern, but a different correction is safer or simpler. Apply Fable's alternative.
+   - `COUNTER`: verified concern, but a different correction is safer or simpler. Apply the orchestrator's alternative.
    - `WAIVE`: only when the user explicitly accepts the risk. Name the user's decision in the reason.
 
 Blockers with a `priorDecision` are either fixes the reviewer says did not land (`reviewerNote` explains) or a one-time dispute of a rejection. Decide them again on the evidence.
@@ -145,7 +145,7 @@ Show its output. Add at most two sentences of your own if something in it needs 
 | Trusting a file:line without opening it | Read the current file and confirm line drift. |
 | Fixing a finding with a new subsystem | Make the smallest edit that resolves the verified failure. |
 | Hand-building reviewer prompts with `turn` | Use `round`; it owns prompts, diffs, and the ledger. |
-| Asking Codex to rewrite the plan | Fable owns plan decisions and edits. |
+| Asking Codex to rewrite the plan | The orchestrator owns plan decisions and edits. |
 
 ## Red flags
 

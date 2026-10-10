@@ -8,6 +8,7 @@ Claude Code plugin `lordknows13-check-loop`. It provides adversarial plan refine
 
 ```text
 .claude-plugin/marketplace.json
+package.json            # pi package manifest (skills only)
 plugins/check-loop/
   plugin.json
   scripts/
@@ -26,13 +27,13 @@ plugins/check-loop/
 
 ## Model and settings contract
 
-- Fable at `xhigh` owns plan refinement, research, execution orchestration, repository validation, and review adjudication.
-- Fresh Opus subagents implement bounded steps and accepted fixes.
+- The session model (whatever the user selected; skills never switch it) owns plan refinement, research, execution orchestration, repository validation, and review adjudication.
+- Fresh subagents implement bounded steps and accepted fixes on `implementerModel`; null inherits the session model.
 - Codex is the adversarial reviewer. Do not hardcode a model identity into prompts or transport defaults.
 
-`scripts/lib/review-config.mjs` resolves each setting independently: invocation override → `.claude/check-loop.json` at the working directory → `~/.claude/check-loop/config.json` → defaults. `CLAUDE_CONFIG_DIR` relocates the user directory. Defaults: `{model: null, effort: null, maxRounds: 6}`. Null inherits Codex settings; maximum rounds must be an integer from 1 through 40.
+`scripts/lib/review-config.mjs` resolves each setting independently: invocation override → `.claude/check-loop.json` at the working directory → `~/.claude/check-loop/config.json` → defaults. `CLAUDE_CONFIG_DIR` relocates the user directory. Defaults: `{model: null, effort: null, maxRounds: 6, implementerModel: null}`. Null model/effort inherits Codex settings; null implementerModel inherits the session model; maximum rounds must be an integer from 1 through 40.
 
-`codex-invoke.mjs config` inspects settings; setters persist only supplied keys (user-wide unless `--project`). `default` resets model/effort to null. `/check-loop:settings` exposes this interface to users. Reject unknown options rather than ignoring reviewer choices.
+`codex-invoke.mjs config` inspects settings; setters persist only supplied keys (user-wide unless `--project`). `default` resets model/effort/implementerModel to null. `/check-loop:settings` exposes this interface to users. Reject unknown options rather than ignoring reviewer choices.
 
 Every reviewer path is read-only. Explicit model/effort mismatches fail. New and resumed turns report actual settings and guard against rerouting. Native review may inherit a separate `review_model`; do not label its model with the primary thread's model when the reviewer is unknown. Setup verifies installation/authentication, not model access.
 
@@ -46,30 +47,30 @@ Evidence statuses:
 - `INFERENCE`: cited facts support an unreproduced conclusion.
 - `UNVERIFIED`: evidence is missing or inaccessible.
 
-Only independently checked `VERIFIED` critical or important findings may block. Fable records `ACCEPT`, `REJECT`, or `COUNTER`. Reviewer agreement, confidence, severity, and repetition are not evidence.
+Only independently checked `VERIFIED` critical or important findings may block. The orchestrator records `ACCEPT`, `REJECT`, or `COUNTER`. Reviewer agreement, confidence, severity, and repetition are not evidence.
 Secret or credential content is redacted from every Codex payload, including full plans, research reports, step diffs, validation output, and final review packets.
-Require zero exit status and a valid nonempty review response before adjudication. Result JSON contains numeric `status` and `error`; incomplete or failed output is not approval. Preserve exact reviewer citations and uncertainty labels separately from Fable's decisions.
+Require zero exit status and a valid nonempty review response before adjudication. Result JSON contains numeric `status` and `error`; incomplete or failed output is not approval. Preserve exact reviewer citations and uncertainty labels separately from the orchestrator's decisions.
 
 
 ## Skills
 
 ### `check-loop`
 
-Fable owns the plan; the configured Codex reviewer critiques it in one persistent thread through `codex-invoke.mjs round`. The runner (`scripts/lib/review-loop.mjs`) owns prompts, structured reviewer output (`REVIEW_OUTPUT_SCHEMA`), secret redaction, finding IDs, the decision ledger, repeat suppression, the one-time dispute budget, stall detection, the frozen round cap, the regression-only closeout, and resumable run state under `~/.claude/check-loop/runs/`. Round 1 is the only broad review and carries the full plan; later rounds carry the diff since the last review and block only on regressions or a missed VERIFIED critical defect. Fable independently checks evidence, records ACCEPT/REJECT/COUNTER/WAIVE, and edits minimally. Never bypass the cap with a new run; stalled or capped runs require a named user choice and are never reported as approved.
+The orchestrator owns the plan; the configured Codex reviewer critiques it in one persistent thread through `codex-invoke.mjs round`. The runner (`scripts/lib/review-loop.mjs`) owns prompts, structured reviewer output (`REVIEW_OUTPUT_SCHEMA`), secret redaction, finding IDs, the decision ledger, repeat suppression, the one-time dispute budget, stall detection, the frozen round cap, the regression-only closeout, and resumable run state under `~/.claude/check-loop/runs/`. Round 1 is the only broad review and carries the full plan; later rounds carry the diff since the last review and block only on regressions or a missed VERIFIED critical defect. The orchestrator independently checks evidence, records ACCEPT/REJECT/COUNTER/WAIVE, and edits minimally. Never bypass the cap with a new run; stalled or capped runs require a named user choice and are never reported as approved.
 
 ### `research`
 
-Fable researches the user's question and writes one Markdown report with current primary-source citations, explicit inferences, counterevidence, and unresolved gaps. Codex reviews the draft through the same `round` runner (`--kind research`, findings `R1`...). Fable independently checks every source before revising. The skill produces no code or implementation plan.
+The orchestrator researches the user's question and writes one Markdown report with current primary-source citations, explicit inferences, counterevidence, and unresolved gaps. Codex reviews the draft through the same `round` runner (`--kind research`, findings `R1`...). The orchestrator independently checks every source before revising. The skill produces no code or implementation plan.
 
 ### `execute`
 
-1. Fable locks the approved plan and records the working-tree state.
+1. The orchestrator locks the approved plan and records the working-tree state.
 2. Existing changes require worktree isolation or explicit user inclusion.
-3. A fresh Opus subagent implements one bounded step without staging or committing.
-4. Fable inspects the changes and runs repository-native validation.
+3. A fresh subagent implements one bounded step without staging or committing.
+4. The orchestrator inspects the changes and runs repository-native validation.
 5. Codex reviews the step-scoped, secret-filtered diff and observed validation.
-6. Fable independently verifies and adjudicates every finding.
-7. A fresh Opus fixer handles only accepted or countered blocking findings.
+6. The orchestrator independently verifies and adjudicates every finding.
+7. A fresh fixer handles only accepted or countered blocking findings.
 8. Final repository verification and a sanitized Codex review packet run before user approval.
 
 Never hide, discard, stage, commit, or push existing user work automatically. Commit and push require explicit user approval.
@@ -119,5 +120,6 @@ Keep these values synchronized:
 1. `.claude-plugin/marketplace.json` → `metadata.version`
 2. `.claude-plugin/marketplace.json` → `plugins[0].version`
 3. `plugins/check-loop/plugin.json` → `version`
+4. `package.json` → `version` (pi package manifest)
 
-Current version: **5.0.0**
+Current version: **5.1.0**

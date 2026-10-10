@@ -1,0 +1,11 @@
+{
+  "name": "lordknows13-check-loop",
+  "version": "5.1.0",
+  "private": true,
+  "description": "Adversarial plan refinement, peer-reviewed research, and supervised execution with a Codex reviewer.",
+  "license": "MIT",
+  "keywords": ["pi-package"],
+  "pi": {
+    "skills": ["./plugins/check-loop/skills"]
+  }
+}

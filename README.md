@@ -2,15 +2,15 @@
 
 check-loop is a Claude Code plugin that asks Codex to review a plan before you build it, check a research draft, or review code as you work through an approved plan.
 
-Fable runs the workflow and checks the review findings. Opus implements each step in a fresh subagent. Codex reviews the work using your chosen model and reasoning effort, or your existing Codex defaults.
+Your session model runs the workflow and checks the review findings. A fresh subagent implements each step, using your session model unless you set an implementer model. Codex reviews the work using your chosen model and reasoning effort, or your existing Codex defaults.
 
-A review finding needs evidence before it can block progress. Fable checks the cited source instead of accepting a concern just because another model raised it.
+A review finding needs evidence before it can block progress. The orchestrator checks the cited source instead of accepting a concern just because another model raised it.
 
-Current version: 5.0.0.
+Current version: 5.1.0.
 
 ## Install
 
-You need Claude Code 2.1.257 or later, Node.js 18 or later, and an authenticated Codex CLI. The skills use Claude Code's `fable` and `opus` model aliases, so your account must have access to them.
+You need Claude Code 2.1.257 or later, Node.js 18 or later, and an authenticated Codex CLI. The skills run on your session's current model, and execution's implementers inherit it unless you choose another.
 
 Install Codex and sign in from your terminal:
 
@@ -29,7 +29,7 @@ Run these commands inside Claude Code:
 /reload-plugins
 ```
 
-The skills select Fable for the session turn. If your host does not apply that selection, start the session with `claude --model fable`.
+The skills do not switch models. Pick the model and effort you want for the session (for example `claude --model fable`) before invoking them.
 
 ### Update
 
@@ -50,9 +50,9 @@ Restart Claude Code if the update requests it. Your reviewer settings live outsi
 /check-loop --quick path/to/plan.md
 ```
 
-Fable reads the plan and relevant repository files, then sends the plan to Codex. The first round is the one broad review. Fable checks each finding, fixes the plan where the evidence supports a change, and later rounds only confirm those fixes and check the changed text. They don't reopen parts of the plan that didn't change.
+The orchestrator reads the plan and relevant repository files, then sends the plan to Codex. The first round is the one broad review. The orchestrator checks each finding, fixes the plan where the evidence supports a change, and later rounds only confirm those fixes and check the changed text. They don't reopen parts of the plan that didn't change.
 
-You see one line per round. The loop stops when no verified blocking concern remains, after up to six rounds by default. `--quick` runs a single review pass. If the same blockers keep coming back, or the limit is reached with fixes Codex hasn't confirmed yet, Fable asks you what to do: keep fixing, waive the named risks, run one confirmation round, or stop. The result lists what changed, what Fable rejected and why, and any open questions.
+You see one line per round. The loop stops when no verified blocking concern remains, after up to six rounds by default. `--quick` runs a single review pass. If the same blockers keep coming back, or the limit is reached with fixes Codex hasn't confirmed yet, the orchestrator asks you what to do: keep fixing, waive the named risks, run one confirmation round, or stop. The result lists what changed, what the orchestrator rejected and why, and any open questions.
 
 An interrupted review resumes where it stopped the next time you run the command on the same plan.
 
@@ -62,7 +62,7 @@ An interrupted review resumes where it stopped the next time you run the command
 /check-loop:research "Compare SQLite and PostgreSQL for this offline-first application"
 ```
 
-Fable gathers sources and writes a draft. Codex checks the facts, sources, gaps, and conclusions. Fable verifies the findings and revises the draft through the same review loop.
+The orchestrator gathers sources and writes a draft. Codex checks the facts, sources, gaps, and conclusions. The orchestrator verifies the findings and revises the draft through the same review loop.
 
 You get one Markdown report with sources, remaining questions, and a record of the review. This command does not implement code or write an implementation plan.
 
@@ -72,9 +72,9 @@ You get one Markdown report with sources, remaining questions, and a record of t
 /check-loop:execute path/to/plan.md
 ```
 
-Fable records the approved plan and the repository's starting state. For each step, it gives a fresh Opus subagent a bounded task, runs the project's checks, and sends the relevant diff and results to Codex.
+The orchestrator records the approved plan and the repository's starting state. For each step, it gives a fresh subagent a bounded task, runs the project's checks, and sends the relevant diff and results to Codex.
 
-If Fable verifies a blocking finding, a fresh Opus subagent fixes it. Execution stops after three unsuccessful fix cycles. Fable runs final checks and requests a final Codex review before handing the work back to you.
+If the orchestrator verifies a blocking finding, a fresh subagent fixes it. Execution stops after three unsuccessful fix cycles. The orchestrator runs final checks and requests a final Codex review before handing the work back to you.
 
 Existing uncommitted work requires your decision before execution starts. Implementers do not stage or commit. Committing and pushing also require your approval.
 
@@ -97,8 +97,9 @@ You can change the Codex model, reasoning effort, and plan or research round lim
 | Model | Your Codex configuration | An exact model ID your account supports, or `default` |
 | Reasoning effort | Your Codex configuration | An effort the selected model supports, or `default` |
 | Maximum review rounds | 6 | An integer from 1 to 40 |
+| Implementer model | Your session model | A model your host accepts for subagents (for example `opus` or `sonnet` in Claude Code, `provider/id` in pi), or `default` |
 
-Ask for user-wide settings or project-only settings. These choices affect Codex, not Fable or Opus. The round limit applies to plans and research. It does not change execution's three-fix limit.
+Ask for user-wide settings or project-only settings. Model, effort, and round limit affect Codex. Implementer model affects only the subagents `execute` dispatches. The round limit applies to plans and research. It does not change execution's three-fix limit.
 
 Each plan or research run keeps the round limit and reviewer it started with. Reviews stop early when no verified blocker remains.
 
@@ -141,7 +142,7 @@ Codex must cite a plan passage, source file, command result, or research source 
 - `INFERENCE` means the source suggests a conclusion that has not been reproduced.
 - `UNVERIFIED` means the evidence is missing or inaccessible.
 
-Only verified critical or important findings can block progress. Fable checks the citation and records whether it accepts, rejects, or counters the finding. Minor findings, inferences, and unanswered questions remain in the report without blocking the work.
+Only verified critical or important findings can block progress. The orchestrator checks the citation and records whether it accepts, rejects, or counters the finding. Minor findings, inferences, and unanswered questions remain in the report without blocking the work.
 
 After the first round, a new finding can block only if the revision introduced it or it is a verified critical defect the first round missed. A rejected finding can be disputed once, with new evidence. Repeats of findings that are already decided are dropped.
 
@@ -161,7 +162,7 @@ node plugins/check-loop/scripts/codex-invoke.mjs setup
 
 ```bash
 git clone https://github.com/Novacon/check-loop.git
-claude --model fable --plugin-dir ./check-loop/plugins/check-loop
+claude --plugin-dir ./check-loop/plugins/check-loop
 ```
 
 When working in another project, pass the absolute path to the clone's `plugins/check-loop` directory. Keep the whole plugin directory together. The skills need the scripts alongside them.
@@ -200,6 +201,12 @@ claude plugin validate ./.claude-plugin/marketplace.json
 ```
 
 The tests cover settings precedence, invalid configuration, reviewer setting mismatches, failed or empty responses, and the review loop's rules: diff-only later rounds, closure gating, repeat suppression, one-time disputes, stall detection, the round limit and closeout, retries, and secret redaction. They do not need model access. For a live check, use an authenticated Codex CLI and a disposable repository.
+
+## Changes in 5.1.0
+
+- **Uses your session model.** The skills no longer switch to Fable; they run on whatever model and effort the session uses.
+- **Configurable implementer model.** `execute`'s implementer and fixer subagents inherit the session model by default. Set `--implementer-model ID` in settings to choose another, or `default` to go back.
+- **Works in [pi](https://pi.dev).** The repository is also a pi package. Install it with `pi install git:github.com/Novacon/check-loop` (or a local clone path) and run the skills with `/skill:check-loop`, `/skill:research`, `/skill:execute`, and `/skill:settings`.
 
 ## Changes in 5.0.0
 

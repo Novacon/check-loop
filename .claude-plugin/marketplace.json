@@ -1,19 +1,19 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "lordknows13-check-loop",
-  "description": "Fable-orchestrated plan refinement, research, and execution with Opus implementers and configurable Codex review",
+  "description": "Plan refinement, research, and execution with fresh implementer subagents and configurable Codex review",
   "owner": {
     "name": "lordknows13"
   },
   "metadata": {
-    "version": "5.0.0"
+    "version": "5.1.0"
   },
   "plugins": [
     {
       "name": "check-loop",
       "source": "./plugins/check-loop",
-      "description": "Fable-orchestrated plan refinement, research peer review, and supervised execution",
-      "version": "5.0.0",
+      "description": "Plan refinement, research peer review, and supervised execution",
+      "version": "5.1.0",
       "category": "development"
     }
   ]
