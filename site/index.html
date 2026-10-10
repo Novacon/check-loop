@@ -436,7 +436,7 @@ td:nth-child(2) { color: var(--warm); }
         <div class="grid g4">
           <div class="feat"><div class="top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM9 10h7M9 14h7M9 18h4"/></svg><span class="kind gate">Plan</span></div><h3>Review a plan</h3><p>One broad review, then later rounds check only the fixes. Six rounds by default, or one pass with <code>--quick</code>. Picks up where it left off if interrupted.</p><div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>claude code</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>/check-loop path/to/plan.md</pre></div></div>
           <div class="feat"><div class="top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 4a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zM15.5 15.5L21 21"/></svg><span class="kind check">Research</span></div><h3>Research a question</h3><p>Writes a sourced draft and Codex checks it. You get one Markdown report with sources and open questions. No code.</p><div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>claude code</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>/check-loop:research "question"</pre></div></div>
-          <div class="feat"><div class="top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l12 8-12 8z"/></svg><span class="kind route">Execute</span></div><h3>Execute a plan</h3><p>A fresh subagent builds each step, then your checks run and Codex reviews the diff. A step gets three fix attempts. Nothing is committed or pushed without your approval.</p><div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>claude code</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>/check-loop:execute path/to/plan.md</pre></div></div>
+          <div class="feat"><div class="top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l12 8-12 8z"/></svg><span class="kind route">Execute</span></div><h3>Execute a plan</h3><p>The runner snapshots the tree before each step, without staging. A fresh subagent builds the step, your checks run, and Codex reviews the diff since the snapshot. A step gets three fix attempts. Nothing is committed or pushed without your approval.</p><div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>claude code</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>/check-loop:execute path/to/plan.md</pre></div></div>
           <div class="feat"><div class="top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4"/></svg><span class="kind">Settings</span></div><h3>Pick the reviewer</h3><p>Set the Codex model, effort, round limit and implementer model, for all projects or just one. Unset values use your Codex and session defaults.</p><div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>claude code</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>/check-loop:settings</pre></div></div>
         </div>
       </div>
@@ -474,7 +474,7 @@ td:nth-child(2) { color: var(--warm); }
               <p>A failed, empty or timed-out review is retried once, then the run stops. If blockers stall or the round limit is reached, you decide what happens next.</p>
             </div>
             <div class="callout warn">
-              <p>Secrets are redacted from everything Codex sees.</p>
+              <p>Secrets are redacted from everything Codex is sent, and step reviews omit <code>.env</code>, secret and credential files. Codex can still read the checkout, so keep secrets in ignored paths.</p>
             </div>
           </div>
         </div>
@@ -552,7 +552,7 @@ codex login</pre></div>
           <div class="copyable"><div class="card-head"><h3>From the CLI</h3><button type="button" class="copy lbl" data-copy>Copy <span aria-hidden="true">→</span></button></div>
             <pre class="cmd">node plugins/check-loop/scripts/codex-invoke.mjs config --project --effort high</pre>
           </div>
-          <div><h3>What's new in 5.1</h3><p>Runs on your session model, has an implementer model setting, and works in <a href="https://pi.dev">pi</a>.</p></div>
+          <div><h3>What's new in 5.2</h3><p>Execution review runs in code, one <code>codex app-server</code> per command instead of a shared broker, and the scripts are less than half their old size.</p></div>
           <div><h3>Develop</h3><p>The loop lives in <code>scripts/lib/review-loop.mjs</code>. <code>node --test tests/</code> runs without model access.</p>
             <div class="links lbl">
               <a href="https://github.com/Novacon/check-loop">GitHub <span aria-hidden="true">↗</span></a>
