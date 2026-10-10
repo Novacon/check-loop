@@ -6,7 +6,7 @@ The model your session runs on is the orchestrator. It runs the workflow and che
 
 A review finding needs evidence before it can block progress. The orchestrator opens the cited source instead of accepting a concern because another model raised it.
 
-Current version: 5.1.0.
+Current version: 5.2.0.
 
 ## Install
 
@@ -216,6 +216,12 @@ claude plugin validate ./.claude-plugin/marketplace.json
 ```
 
 The tests cover settings precedence, invalid configuration, reviewer setting mismatches, failed or empty responses, and the review loop's rules: diff-only later rounds, closure gating, repeat suppression, one-time disputes, stall detection, the round limit and closeout, retries, and secret redaction. They do not need model access. For a live check, use an authenticated Codex CLI and a disposable repository.
+
+## Changes in 5.2.0
+
+- **Execution runs in code.** `codex-invoke.mjs step --begin` records a step base without staging; `step` diffs it, drops protected paths, redacts secrets, and runs the same ledger as plan review. The execute skill is a third of its old length.
+- **No more broker.** Each command spawns its own short-lived `codex app-server`. The old shared broker leaked a process pair per directory.
+- Removed unused upstream modules and duplicate CLI probes.
 
 ## Changes in 5.1.0
 
