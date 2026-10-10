@@ -18,7 +18,7 @@
 @font-face { font-family: "Inter"; src: url("fonts/Inter-ExtraBold.woff2") format("woff2"); font-weight: 800; font-display: swap; }
 @font-face { font-family: "Inconsolata"; src: url("fonts/Inconsolata-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
 
-/* Layout: the ohmyjev site, pink accents. The NOVACON homepage. Full-screen slides over an ambient grid, the wordmark flies
+/* Layout: full-screen slides over an ambient grid, the wordmark flies
    from center stage into the header, fixed chrome in the corners. Content follows README.md.
    Every doc slide shares one frame: label + heading on the left, lede on the right, then a body
    whose panels stretch to equal heights, so the slides line up when you page through them. */
@@ -29,7 +29,7 @@
   --panel-hi: rgba(22, 22, 22, .94);
   --paper: #cacccc;
   --muted: rgba(202, 204, 204, .78);
-  --faint: rgba(202, 204, 204, .55);
+  --faint: rgba(202, 204, 204, .62);
   --line: rgba(121, 129, 134, .34);
   --line-strong: #a8adb0;
   --steel: #798186;
@@ -76,44 +76,13 @@ code { font-family: var(--body); color: var(--paper); }
 .glitch { position: relative; display: block; }
 /* the logo is an image, so it scales with the brand font-size; four hard drop-shadows draw a pink stroke around it */
 .logo { height: 1em; width: auto; filter: drop-shadow(.007em 0 0 var(--accent)) drop-shadow(-.007em 0 0 var(--accent)) drop-shadow(0 .007em 0 var(--accent)) drop-shadow(0 -.007em 0 var(--accent)); }
-/* neon, oh-my-zsh style: a tube around each letter in the same pink gradient as the heading accents, the solid letter on top.
-   ::after is a ground-colored copy of the letters so the tube's inner half doesn't show through the semi-transparent letter */
-/* the box overhangs the letters so the outline isn't clipped at the edges; padding keeps the text in place */
-.neon, .neon::after { position: absolute; pointer-events: none; padding: .15em; }
-.neon { inset: -.15em; }
-.neon::after { inset: 0; }
-.neon {
-  color: transparent; -webkit-text-stroke: max(.05em, 1.5px) transparent;
-  background: linear-gradient(90deg, var(--accent), var(--pink-hi));
-  -webkit-background-clip: text; background-clip: text;
-}
-.neon::after { content: attr(data-text); color: var(--ground); }
-.glitch::before, .glitch::after { content: attr(data-text); position: absolute; inset: 0; opacity: 0; pointer-events: none; }
-.glitch::before { color: #3fb6c6; }
-.glitch::after { color: var(--accent); }
 .ready:not(.moving) .glitch { animation: glitch 3.4s step-end infinite; }
-.ready:not(.moving) .glitch::before { animation: glitch-a 3.4s step-end infinite; }
-.ready:not(.moving) .glitch::after { animation: glitch-b 3.4s step-end infinite; }
 @keyframes glitch {
   0%, 69%, 73%, 91%, 95%, 100% { transform: none; opacity: .9; }
   70% { transform: translateX(-2px) skewX(-2deg); opacity: .76; }
   71% { transform: translateX(3px); opacity: 1; }
   92% { transform: scaleX(1.008); opacity: .82; }
   93% { transform: translateX(-1px); opacity: 1; }
-}
-@keyframes glitch-a {
-  0%, 69%, 72%, 91%, 94%, 100% { clip-path: inset(0 0 100% 0); opacity: 0; transform: none; }
-  70% { clip-path: inset(12% 0 62% 0); opacity: .72; transform: translateX(-.07em); }
-  71% { clip-path: inset(66% 0 12% 0); opacity: .52; transform: translateX(.04em); }
-  92% { clip-path: inset(38% 0 42% 0); opacity: .62; transform: translateX(-.05em); }
-  93% { clip-path: inset(76% 0 8% 0); opacity: .45; transform: translateX(-.03em); }
-}
-@keyframes glitch-b {
-  0%, 69%, 72%, 91%, 94%, 100% { clip-path: inset(100% 0 0 0); opacity: 0; transform: none; }
-  70% { clip-path: inset(58% 0 18% 0); opacity: .65; transform: translateX(.07em); }
-  71% { clip-path: inset(24% 0 58% 0); opacity: .46; transform: translateX(-.04em); }
-  92% { clip-path: inset(8% 0 74% 0); opacity: .58; transform: translateX(.05em); }
-  93% { clip-path: inset(48% 0 34% 0); opacity: .4; transform: translateX(-.03em); }
 }
 
 /* bottom chrome: credits left, slide counter + back-to-top right; appears once the intro has passed */
@@ -148,7 +117,7 @@ body::before { top: 0; height: calc(env(safe-area-inset-top, 0px) + var(--block)
 body::after { bottom: 0; height: calc(var(--block) + 52px); background: linear-gradient(rgba(10, 10, 10, 0), var(--ground) 55%); }
 .passed::before, .passed::after { opacity: 1; }
 
-/* side rail, after omp.sh: one square per slide, title pops out on hover */
+/* side rail: one square per slide, title pops out on hover */
 .rail {
   position: fixed; right: clamp(16px, 1.8vw, 40px); top: 50%; transform: translateY(-50%); z-index: 16;
   display: flex; flex-direction: column; border: 1px solid var(--line);
@@ -160,7 +129,7 @@ body::after { bottom: 0; height: calc(var(--block) + 52px); background: linear-g
 .rail a[aria-current="page"] { color: var(--accent); background: rgba(255, 61, 139, .08); }
 .rail a[aria-current="page"]::before { content: ""; position: absolute; left: -1px; top: -1px; bottom: -1px; width: 2px; background: var(--accent); }
 .rail svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: square; stroke-linejoin: miter; }
-.rail .n { position: absolute; right: 5px; bottom: 3px; font: 10px var(--label); letter-spacing: .06em; color: var(--faint); }
+.rail .n { position: absolute; right: 5px; bottom: 3px; font: 11px var(--label); letter-spacing: .06em; color: var(--faint); }
 .rail a[aria-current="page"] .n { color: var(--accent); }
 .rail .tip {
   position: absolute; right: calc(100% + 10px); top: 50%; transform: translate(6px, -50%); opacity: 0; pointer-events: none;
@@ -221,7 +190,7 @@ main { position: relative; z-index: 1; }
 .section-label::before { content: ""; width: 6px; height: 6px; background: var(--accent); }
 .section-label span { margin-left: 8px; color: var(--faint); }
 h2 { color: var(--paper); font: 800 clamp(2.6rem, 4.6vw, 4.8rem)/.95 var(--display); letter-spacing: -.05em; text-transform: lowercase; text-wrap: balance; }
-h2 em { font-style: inherit; background: linear-gradient(90deg, var(--accent), var(--pink-hi)); -webkit-background-clip: text; background-clip: text; color: transparent; padding-right: .04em; }
+h2 em { font-style: inherit; color: var(--accent); }
 .lede { max-width: 62ch; color: var(--muted); font-size: clamp(1rem, .95rem + .2vw, 1.1875rem); line-height: 1.5; }
 .body { flex: 1; display: grid; gap: var(--gap); }
 .body.main-first { grid-template-rows: 1fr auto; }
@@ -247,9 +216,9 @@ h3 { font: var(--ui) var(--label); letter-spacing: .08em; text-transform: upperc
 .feat:hover svg { stroke: var(--accent); }
 .kind { font: .6875rem var(--label); letter-spacing: .1em; text-transform: uppercase; color: var(--faint); display: inline-flex; align-items: center; gap: 6px; }
 .kind::before { content: ""; width: 5px; height: 5px; background: var(--steel); }
-.kind.gate::before { background: var(--accent); }
-.kind.check::before { background: var(--green); }
-.kind.route::before { background: #4575de; }
+.kind.plan::before { background: var(--accent); }
+.kind.research::before { background: var(--green); }
+.kind.execute::before { background: var(--paper); }
 .feat h3 { font: 800 1.1875rem/1.2 var(--display); letter-spacing: -.01em; text-transform: none; }
 .feat p { font-size: .9375rem; }
 .feat .cfg { margin-top: auto; padding-top: 10px; border-top: 1px dashed var(--line); color: var(--faint); font: .8125rem var(--body); letter-spacing: .007em; }
@@ -259,7 +228,7 @@ h3 { font: var(--ui) var(--label); letter-spacing: .08em; text-transform: upperc
 /* stat strip on the flow slide */
 .stats > * { flex-direction: row; align-items: center; gap: 14px; }
 .stats b { font: 800 clamp(1.8rem, 2.6vw, 2.6rem)/1 var(--display); letter-spacing: -.04em; color: var(--paper); }
-.stats small { margin-left: 3px; font-size: .45em; letter-spacing: 0; color: var(--accent); }
+.stats small { margin-left: 3px; font-size: max(.45em, 11px); letter-spacing: 0; color: var(--accent); }
 .stats .lbl { font-size: .75rem; line-height: 1.4; color: var(--faint); }
 
 /* code windows */
@@ -284,7 +253,7 @@ h3 { font: var(--ui) var(--label); letter-spacing: .08em; text-transform: upperc
 .card-head a.meta span { color: var(--accent); }
 .cmd { padding: 8px 12px; border-left: 2px solid var(--accent); background: rgba(5, 5, 5, .7); font: 14.5px/1.55 var(--body); color: var(--paper); white-space: pre-wrap; overflow-wrap: break-word; }
 
-/* flow: what happens to one tool call */
+/* flow: how a finding is decided */
 .flow-cols { display: grid; gap: var(--gap); grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: stretch; }
 .pipe { position: relative; display: flex; flex-direction: column; gap: 12px; padding-left: 26px; }
 .pipe::before { content: ""; position: absolute; left: 6px; top: 14px; bottom: 14px; width: 1px; background: linear-gradient(var(--accent), var(--line) 40%, var(--line) 70%, var(--green)); }
@@ -303,17 +272,37 @@ h3 { font: var(--ui) var(--label); letter-spacing: .08em; text-transform: upperc
 .rule .if { color: var(--muted); }
 .rule .to { color: var(--steel); font-family: var(--label); }
 .rule .then { color: var(--paper); }
-.rule .then.deny { color: var(--accent); }
+.rule .then.block { color: var(--accent); }
 .rule .then.ok { color: var(--green); }
 .side { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
 .side .code { flex: none; }
 .callout { flex: 1; display: flex; flex-direction: column; gap: 10px; padding: clamp(14px, 2vh, 22px) clamp(14px, 1.4vw, 22px); border: 1px solid var(--line); border-left: 2px solid var(--green); background: var(--panel); }
 .callout.warn { flex: none; border-left-color: var(--accent); }
 
+/* demo: one terminal, a tab per skill, the run replays line by line */
+.demo { display: flex; flex-direction: column; }
+.demo .code-bar { gap: 4px 12px; flex-wrap: wrap; }
+.demo .qs-tabs { margin-left: 8px; }
+.demo .replay { margin-left: auto; color: var(--muted); transition: color .2s ease; }
+.demo .replay:hover { color: var(--paper); }
+.demo .replay span { color: var(--accent); }
+.term { flex: 1; min-height: 25.5em; padding: 14px 18px; font: 14.5px/1.6 var(--body); color: var(--paper); white-space: pre-wrap; overflow-wrap: anywhere; }
+.term > div { min-height: 1.6em; }
+.term .in::before { content: "> "; color: var(--accent); }
+.term .sub { padding-left: 2ch; color: var(--muted); }
+.term .cite { padding-left: 4ch; color: var(--steel); }
+.term .act { padding-left: 2ch; color: var(--warm); }
+.term .sum { color: var(--paper); }
+.term .ok { color: var(--green); }
+.term .b { color: var(--accent); }
+.term .caret { display: inline-block; width: .55em; height: 1.1em; vertical-align: text-bottom; background: var(--accent); animation: blink 1s step-end infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.demo-note { color: var(--faint); font-size: .8125rem; }
+
 /* install steps */
 .step .n { display: flex; align-items: center; gap: 10px; color: var(--accent); font: .8125rem var(--label); letter-spacing: .1em; }
 .step .n::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--line), transparent); }
-.step h4 { color: var(--paper); font: 800 1.25rem/1.2 var(--display); letter-spacing: -.01em; }
+.step h3 { color: var(--paper); font: 800 1.25rem/1.2 var(--display); letter-spacing: -.01em; text-transform: none; }
 .step ol { display: grid; gap: 4px; padding-left: 18px; }
 .step li::marker { color: var(--steel); font-family: var(--label); font-size: .8125rem; }
 .fix h3 { font-size: .8125rem; color: var(--warm); }
@@ -339,6 +328,7 @@ td:nth-child(2) { color: var(--warm); }
 
 /* laptop screens: same frame, denser type so each slide still fits one screen */
 @media (min-width: 1001px) and (max-height: 880px) {
+  .term { font-size: 13.5px; line-height: 1.5; min-height: 24em; padding: 10px 14px; }
   h2 { font-size: clamp(2.4rem, 4vw, 3.8rem); }
   .lede { font-size: .9375rem; line-height: 1.45; }
   .feat h3 { font-size: 1.0625rem; }
@@ -375,7 +365,7 @@ td:nth-child(2) { color: var(--warm); }
   .rule { grid-template-columns: 1fr; gap: 2px; }
   .rule .to { display: none; }
   .indicator { display: none; }
-  .bottom { font-size: .625rem; gap: 12px; }
+  .bottom { font-size: .6875rem; gap: 12px; }
   .footer { letter-spacing: .04em; white-space: nowrap; }
   .card-head .meta { text-align: left; }
   /* settings table becomes one block per setting: name and default on a line, what it changes under it */
@@ -389,7 +379,8 @@ td:nth-child(2) { color: var(--warm); }
 }
 @media (prefers-reduced-motion: reduce) {
   .js .slide .reveal { opacity: 1; transform: none; transition: none; }
-  .glitch, .glitch::before, .glitch::after { animation: none !important; }
+  .glitch { animation: none !important; }
+  .term .caret { animation: none; }
   #slide-progress { transition: none; }
 }
 </style>
@@ -401,7 +392,7 @@ td:nth-child(2) { color: var(--warm); }
   <span class="brand-target" id="brand-target" aria-hidden="true"></span>
 </header>
 <nav class="rail" id="rail" aria-label="Slides"></nav>
-<a href="#top" class="brand" id="brand" aria-label="check-loop home"><img class="logo glitch" src="logo.svg" alt="check-loop"></a>
+<h1><a href="#top" class="brand" id="brand" aria-label="check-loop home"><img class="logo glitch" src="logo.svg" alt="check-loop"></a></h1>
 
 <main>
   <section id="top" class="slide landing" data-title="Quick start" aria-label="check-loop quick start">
@@ -434,11 +425,34 @@ td:nth-child(2) { color: var(--warm); }
       </div>
       <div class="body reveal">
         <div class="grid g4">
-          <div class="feat"><div class="top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM9 10h7M9 14h7M9 18h4"/></svg><span class="kind gate">Plan</span></div><h3>Review a plan</h3><p>One broad review, then later rounds check only the fixes. Six rounds by default, or one pass with <code>--quick</code>. Picks up where it left off if interrupted.</p><div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>claude code</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>/check-loop path/to/plan.md</pre></div></div>
-          <div class="feat"><div class="top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 4a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zM15.5 15.5L21 21"/></svg><span class="kind check">Research</span></div><h3>Research a question</h3><p>Writes a sourced draft and Codex checks it. You get one Markdown report with sources and open questions. No code.</p><div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>claude code</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>/check-loop:research "question"</pre></div></div>
-          <div class="feat"><div class="top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l12 8-12 8z"/></svg><span class="kind route">Execute</span></div><h3>Execute a plan</h3><p>The runner snapshots the tree before each step, without staging. A fresh subagent builds the step, your checks run, and Codex reviews the diff since the snapshot. A step gets three fix attempts. Nothing is committed or pushed without your approval.</p><div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>claude code</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>/check-loop:execute path/to/plan.md</pre></div></div>
+          <div class="feat"><div class="top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM9 10h7M9 14h7M9 18h4"/></svg><span class="kind plan">Plan</span></div><h3>Review a plan</h3><p>One broad review, then later rounds check only the fixes. Six rounds by default, or one pass with <code>--quick</code>. Picks up where it left off if interrupted.</p><div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>claude code</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>/check-loop path/to/plan.md</pre></div></div>
+          <div class="feat"><div class="top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 4a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zM15.5 15.5L21 21"/></svg><span class="kind research">Research</span></div><h3>Research a question</h3><p>Writes a sourced draft and Codex checks it. You get one Markdown report with sources and open questions. No code.</p><div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>claude code</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>/check-loop:research "question"</pre></div></div>
+          <div class="feat"><div class="top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l12 8-12 8z"/></svg><span class="kind execute">Execute</span></div><h3>Execute a plan</h3><p>The runner snapshots the tree before each step, without staging. A fresh subagent builds the step, your checks run, and Codex reviews the diff since the snapshot. A step gets three fix attempts. Nothing is committed or pushed without your approval.</p><div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>claude code</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>/check-loop:execute path/to/plan.md</pre></div></div>
           <div class="feat"><div class="top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4"/></svg><span class="kind">Settings</span></div><h3>Pick the reviewer</h3><p>Set the Codex model, effort, round limit and implementer model, for all projects or just one. Unset values use your Codex and session defaults.</p><div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>claude code</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>/check-loop:settings</pre></div></div>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="demo" class="slide doc" data-title="Watch it run">
+    <div class="doc-inner">
+      <div class="head reveal">
+        <p class="section-label lbl">02 / Watch it run <span>3 skills</span></p><h2>watch it <em>run</em></h2>
+        <p class="lede">Codex raises findings with citations. The orchestrator opens each cited line, then accepts, rejects or counters. You see one summary line per round.</p>
+      </div>
+      <div class="body reveal main-first">
+        <div class="code demo">
+          <div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>claude code</span>
+            <div class="qs-tabs" role="tablist" aria-label="Skill">
+              <button type="button" class="qs-tab demo-tab" role="tab" aria-selected="true" data-run="plan">Plan</button>
+              <button type="button" class="qs-tab demo-tab" role="tab" aria-selected="false" data-run="research">Research</button>
+              <button type="button" class="qs-tab demo-tab" role="tab" aria-selected="false" data-run="execute">Execute</button>
+            </div>
+            <button type="button" class="replay" id="replay">Replay <span aria-hidden="true">↻</span></button>
+          </div>
+          <div class="term" id="term" role="log" aria-label="Example run"></div>
+        </div>
+        <p class="demo-note">Example runs. Summary lines and outcomes use the plugin's real output format; the plans, files and findings are illustrative.</p>
       </div>
     </div>
   </section>
@@ -446,7 +460,7 @@ td:nth-child(2) { color: var(--warm); }
   <section id="flow" class="slide doc" data-title="How it decides">
     <div class="doc-inner">
       <div class="head reveal">
-        <p class="section-label lbl">02 / How it decides <span>One finding</span></p><h2>how it <em>decides</em></h2>
+        <p class="section-label lbl">03 / How it decides <span>One finding</span></p><h2>how it <em>decides</em></h2>
         <p class="lede">Every finding cites a source and carries an evidence label. Only findings the orchestrator has verified can block.</p>
       </div>
       <div class="body reveal main-first">
@@ -455,13 +469,13 @@ td:nth-child(2) { color: var(--warm); }
             <div class="node"><span class="lbl">In</span>Codex raises a finding</div>
             <div class="stage">
               <h3><b>01</b> The orchestrator checks the citation</h3>
-              <div class="rule"><span class="if">VERIFIED, critical or important</span><span class="to" aria-hidden="true">→</span><span class="then deny">Blocks: accept, reject or counter</span></div>
+              <div class="rule"><span class="if">VERIFIED, critical or important</span><span class="to" aria-hidden="true">→</span><span class="then block">Blocks until accepted, rejected or countered</span></div>
               <div class="rule"><span class="if">INFERENCE or UNVERIFIED</span><span class="to" aria-hidden="true">→</span><span class="then">Report only</span></div>
               <div class="rule"><span class="if">Minor, or a question</span><span class="to" aria-hidden="true">→</span><span class="then">Report only</span></div>
             </div>
             <div class="stage">
               <h3><b>02</b> The next round <i>diff only</i></h3>
-              <div class="rule"><span class="if">Regression, or a missed critical defect</span><span class="to" aria-hidden="true">→</span><span class="then deny">Can still block</span></div>
+              <div class="rule"><span class="if">Regression, or a missed critical defect</span><span class="to" aria-hidden="true">→</span><span class="then block">Can still block</span></div>
               <div class="rule"><span class="if">Repeat of a decided finding</span><span class="to" aria-hidden="true">→</span><span class="then ok">Dropped</span></div>
             </div>
           </div>
@@ -491,31 +505,31 @@ td:nth-child(2) { color: var(--warm); }
   <section id="install" class="slide doc" data-title="Install">
     <div class="doc-inner">
       <div class="head reveal">
-        <p class="section-label lbl">03 / Install <span>4 steps</span></p><h2><em>install</em> it</h2>
+        <p class="section-label lbl">04 / Install <span>4 steps</span></p><h2><em>install</em> it</h2>
         <p class="lede">You need Node.js 18+ and a signed-in Codex CLI. For pi, see the <a href="#top">quick start</a>.</p>
       </div>
       <div class="body reveal main-first">
         <div class="grid g4">
           <div class="step">
-            <p class="n">STEP 1</p><h4>Check your version</h4>
+            <p class="n">STEP 1</p><h3>Check your version</h3>
             <p>Claude Code 2.1.257 or later.</p>
             <div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>shell</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>claude --version</pre></div>
           </div>
           <div class="step">
-            <p class="n">STEP 2</p><h4>Sign in to Codex</h4>
+            <p class="n">STEP 2</p><h3>Sign in to Codex</h3>
             <p>Headless? Use <code>codex login --device-auth</code>.</p>
             <div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>shell</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>npm install -g @openai/codex
 codex login</pre></div>
           </div>
           <div class="step">
-            <p class="n">STEP 3</p><h4>Install the plugin</h4>
+            <p class="n">STEP 3</p><h3>Install the plugin</h3>
             <p>Inside Claude Code.</p>
             <div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>claude code</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>/plugin marketplace add Novacon/check-loop
 /plugin install check-loop@lordknows13-check-loop
 /reload-plugins</pre></div>
           </div>
           <div class="step">
-            <p class="n">STEP 4</p><h4>Pick your model</h4>
+            <p class="n">STEP 4</p><h3>Pick your model</h3>
             <p>The skills don't switch models, so start on the one you want.</p>
             <div class="code"><div class="code-bar lbl"><span class="dots" aria-hidden="true">● ● ●</span><span>shell</span><button type="button" class="copy" data-copy>Copy <span aria-hidden="true">→</span></button></div><pre>claude --model fable</pre></div>
           </div>
@@ -533,7 +547,7 @@ codex login</pre></div>
   <section id="settings" class="slide doc" data-title="Settings">
     <div class="doc-inner">
       <div class="head reveal">
-        <p class="section-label lbl">04 / Settings <span>/check-loop:settings</span></p><h2>tune <em>it</em></h2>
+        <p class="section-label lbl">05 / Settings <span>/check-loop:settings</span></p><h2>tune <em>it</em></h2>
         <p class="lede">Each setting uses the first value it finds: CLI flag, then <code>.claude/check-loop.json</code>, then <code>~/.claude/check-loop/config.json</code>, then the default.</p>
       </div>
       <div class="body reveal main-last">
@@ -589,6 +603,7 @@ const ICONS = {
   skills: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
   flow: 'M6 3v18M6 9c6 0 12 1 12 7v5M15 18l3 3 3-3',
   install: 'M4 5h16v14H4zM8 10l3 2-3 2M13 15h3',
+  demo: 'M4 5h16v14H4zM10 9l5 3-5 3z',
   settings: 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4',
 };
 const rail = $('rail');
@@ -601,12 +616,83 @@ slides.forEach((s, i) => {
 const railLinks = [...rail.children];
 
 // quick start: one set of steps per agent
-const tabs = [...document.querySelectorAll('.qs-tab')];
+const tabs = [...document.querySelectorAll('.qs-tab:not(.demo-tab)')];
 tabs.forEach(t => t.addEventListener('click', () => {
   tabs.forEach(b => b.setAttribute('aria-selected', String(b === t)));
   document.querySelectorAll('.qs-rows').forEach(r => { r.hidden = r.dataset.agent !== t.dataset.agent; });
   measure(); intro(); // the steps' height can change, and the wordmark sits above them
 }));
+
+// demo: replay an example run per skill. [class, text]; "in" lines type out
+const RUNS = {
+  plan: [
+    ['in', '/check-loop plans/rate-limit.md'],
+    ['sub', 'Reading the plan and 6 repository files'],
+    ['sub', 'Round 1 → Codex, read-only'],
+    ['sum', 'Round 1/6 (reviewer Codex default/Codex default): <b class="b">2 new blocker(s) (F1, F2)</b>, 1 note(s).'],
+    ['sub', 'F1 [critical · VERIFIED] Limiter counters live in process memory; a deploy resets them'],
+    ['cite', 'cites src/limiter.ts:42'],
+    ['act', 'opened src/limiter.ts:42 · confirmed · ACCEPT, plan moves counters to Redis'],
+    ['sub', 'F2 [important · VERIFIED] Migration drops the user_id index before the backfill'],
+    ['cite', 'cites db/migrations/014.sql:9'],
+    ['act', 'opened 014.sql and 015.sql · index is rebuilt in 015 · REJECT'],
+    ['sub', 'Round 2 → Codex, diff since round 1 only'],
+    ['sum', 'Round 2/6: <span class="ok">1 fixed</span>.'],
+    ['sum', '<span class="ok">CONVERGED</span> — 2/6 round(s). Rejected: F2, index is rebuilt in 015.sql.'],
+  ],
+  research: [
+    ['in', '/check-loop:research "Can SQLite in WAL mode take concurrent writers?"'],
+    ['sub', 'Drafting from primary sources: sqlite.org/wal.html, sqlite.org/lockingv3.html'],
+    ['sub', 'Round 1 → Codex, read-only'],
+    ['sum', 'Round 1/6 (reviewer Codex default/Codex default): <b class="b">1 new blocker(s) (R1)</b>, 2 note(s).'],
+    ['sub', 'R1 [important · VERIFIED] Draft says WAL allows concurrent writers'],
+    ['cite', 'cites sqlite.org/wal.html: "there can only be one writer at a time"'],
+    ['act', 'opened sqlite.org/wal.html · confirmed · ACCEPT, draft corrected'],
+    ['sub', 'R2 [minor · INFERENCE] Busy-timeout advice may be version-specific'],
+    ['act', 'note only · kept as an open question'],
+    ['sub', 'Round 2 → Codex, diff since round 1 only'],
+    ['sum', 'Round 2/6: <span class="ok">1 fixed</span>, 1 note(s).'],
+    ['sum', '<span class="ok">CONVERGED</span> — 2/6 round(s). report.md: sources, 1 open question, review record.'],
+  ],
+  execute: [
+    ['in', '/check-loop:execute plans/rate-limit.md'],
+    ['sub', 'Step 1/3 base recorded as a git tree · nothing staged'],
+    ['sub', 'Fresh subagent implements step 1 · npm test: 48 passed'],
+    ['sum', 'Round 1/4 (reviewer Codex default/Codex default): <b class="b">1 new blocker(s) (S1)</b>.'],
+    ['sub', 'S1 [critical · VERIFIED] Redis key is written without a TTL; counters never expire'],
+    ['cite', 'cites src/limiter.ts:57'],
+    ['act', 'opened src/limiter.ts:57 · confirmed · ACCEPT → fresh fixer'],
+    ['sum', 'Round 2/4: <span class="ok">1 fixed</span>.'],
+    ['sub', 'Steps 2/3 and 3/3: no findings'],
+    ['sub', 'Final review of everything since the execution base: no findings'],
+    ['sum', '<span class="ok">Ready.</span> Nothing committed or pushed. Approve to commit?'],
+  ],
+};
+const term = $('term'), demoTabs = [...document.querySelectorAll('.demo-tab')];
+let demoRun = 'plan', demoTimer = 0, demoStarted = false;
+function playDemo() {
+  clearTimeout(demoTimer); term.textContent = ''; demoStarted = true;
+  const lines = RUNS[demoRun];
+  if (still) { term.innerHTML = lines.map(([c, t]) => `<div class="${c}">${t}</div>`).join(''); return; }
+  const caret = document.createElement('span'); caret.className = 'caret';
+  let i = 0;
+  const next = () => {
+    if (i >= lines.length) { term.lastChild.append(caret); return; }
+    const [c, t] = lines[i++], row = document.createElement('div');
+    row.className = c; term.append(row);
+    if (c !== 'in') { row.innerHTML = t; demoTimer = setTimeout(next, c === 'sum' ? 700 : c === 'cite' ? 260 : 420); return; }
+    let k = 0; row.append(caret);
+    const type = () => { caret.before(t[k++]); demoTimer = setTimeout(k < t.length ? type : next, k < t.length ? 28 : 500); };
+    type();
+  };
+  next();
+}
+demoTabs.forEach(t => t.addEventListener('click', () => {
+  demoTabs.forEach(b => b.setAttribute('aria-selected', String(b === t)));
+  demoRun = t.dataset.run; playDemo();
+}));
+$('replay').addEventListener('click', playDemo);
+new IntersectionObserver((entries, o) => { if (entries[0].isIntersecting) { o.disconnect(); if (!demoStarted) playDemo(); } }, { threshold: .4 }).observe(term);
 
 // copy buttons: copy the command or code next to them
 document.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', async () => {

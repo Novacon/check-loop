@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-10T00:00:00Z",
+  "title": "Design System: check-loop",
+  "extensions": {
+    "colorMeta": {
+      "accent": { "role": "primary", "displayName": "Signal Pink", "tonalRamp": ["#3d0a1f","#6b1238","#9c1b52","#cc246c","#ff3d8b","#ff6aa6","#ff9fc8","#ffd6e8"] },
+      "pink-hi": { "role": "primary", "displayName": "Neon Blush" },
+      "green": { "role": "secondary", "displayName": "Pass Green", "tonalRamp": ["#00331a","#004d27","#007a3d","#00b058","#00e676","#4dffa0","#99ffc8","#d6ffea"] },
+      "ground": { "role": "neutral", "displayName": "After-Hours Black" },
+      "paper": { "role": "neutral", "displayName": "Console Paper", "tonalRamp": ["#141414","#2a2b2b","#454747","#626565","#798186","#a8adb0","#cacccc","#e8e9e9"] },
+      "steel": { "role": "neutral", "displayName": "Steel" },
+      "warm": { "role": "neutral", "displayName": "Warm Stone" }
+    },
+    "typographyMeta": {
+      "logo": { "displayName": "Wordmark", "purpose": "Neon wordmark only." },
+      "display": { "displayName": "Display", "purpose": "Slide h2, lowercase." },
+      "title": { "displayName": "Title", "purpose": "Card and step titles." },
+      "body": { "displayName": "Body", "purpose": "Paragraphs, ledes, code." },
+      "label": { "displayName": "Label", "purpose": "Uppercase mono labels, buttons, meta." }
+    },
+    "shadows": [],
+    "motion": [
+      { "name": "ease", "value": "cubic-bezier(.22, .61, .36, 1)", "purpose": "Slide reveal and progress bar." },
+      { "name": "reveal", "value": "opacity .7s ease, transform .8s ease (18px rise)", "purpose": "Slide content entry." },
+      { "name": "glitch", "value": "3.4s step-end infinite", "purpose": "Wordmark RGB-split at rest." }
+    ],
+    "breakpoints": [
+      { "name": "phone", "value": "600px" },
+      { "name": "rail", "value": "820px" },
+      { "name": "stack", "value": "1000px" },
+      { "name": "grid", "value": "1180px" },
+      { "name": "short-laptop", "value": "max-height 880px" }
+    ]
+  },
+  "components": [
+    { "name": "Copy Button", "kind": "button", "refersTo": "copy-button", "description": "Row-end copy action.",
+      "html": "<button class=\"ds-copy\">Copy</button>",
+      "css": ".ds-copy{min-width:88px;padding:10px 14px;border:1px solid rgba(121,129,134,.34);background:none;color:#ff3d8b;font:.8125rem 'Departure Mono',ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;transition:background .2s ease,color .2s ease}.ds-copy:hover{background:#ff3d8b;color:#0a0a0a}.ds-copy:focus-visible{outline:1px solid #cacccc;outline-offset:4px}" },
+    { "name": "Ghost Button", "kind": "button", "refersTo": "ghost-button", "description": "Back-to-top chrome.",
+      "html": "<a class=\"ds-ghost\" href=\"#\">Top <span>↑</span></a>",
+      "css": ".ds-ghost{display:inline-flex;gap:8px;padding:7px 10px;border:1px solid rgba(121,129,134,.34);background:rgba(10,10,10,.72);backdrop-filter:blur(12px);color:#cacccc;font:.8125rem 'Departure Mono',monospace;letter-spacing:.08em;text-transform:uppercase;text-decoration:none;transition:border-color .2s ease}.ds-ghost span{color:#ff3d8b}.ds-ghost:hover{border-color:#ff3d8b}.ds-ghost:focus-visible{outline:1px solid #cacccc;outline-offset:4px}" },
+    { "name": "Badge", "kind": "chip", "description": "Hairline badge with square dot.",
+      "html": "<span class=\"ds-badge\">Claude Code</span>",
+      "css": ".ds-badge{display:inline-flex;align-items:center;gap:8px;padding:4px 9px;border:1px solid rgba(121,129,134,.34);color:rgba(202,204,204,.78);font:.75rem 'Departure Mono',monospace;letter-spacing:.08em;text-transform:uppercase}.ds-badge::before{content:'';width:5px;height:5px;background:#ff3d8b}" },
+    { "name": "Feature Card", "kind": "card", "refersTo": "panel-card", "description": "Hairline-grid panel.",
+      "html": "<div class=\"ds-grid\"><div class=\"ds-card\"><h3>Review a plan</h3><p>One broad review, then later rounds check only the fixes.</p></div><div class=\"ds-card\"><h3>Execute a plan</h3><p>Codex reviews each step's diff.</p></div></div>",
+      "css": ".ds-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:rgba(121,129,134,.34);border:1px solid rgba(121,129,134,.34)}.ds-card{padding:18px;background:#0a0a0a;transition:background .25s ease}.ds-card:hover{background:#161616}.ds-card h3{color:#cacccc;font:800 1.1875rem/1.2 Inter,system-ui,sans-serif;letter-spacing:-.01em;margin:0 0 8px}.ds-card p{color:rgba(202,204,204,.78);font:1rem/1.45 Inconsolata,monospace;margin:0}" },
+    { "name": "Tabs", "kind": "nav", "description": "Quick-start tabs.",
+      "html": "<div class=\"ds-tabs\"><button aria-selected=\"true\">Claude Code</button><button>pi</button></div>",
+      "css": ".ds-tabs{display:flex;gap:4px}.ds-tabs button{padding:3px 8px 4px;border:0;border-bottom:1px solid transparent;background:none;color:rgba(202,204,204,.55);font:.75rem 'Departure Mono',monospace;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}.ds-tabs button:hover{color:#cacccc}.ds-tabs button[aria-selected=true]{color:#ff3d8b;border-bottom-color:#ff3d8b}" },
+    { "name": "Command Line", "kind": "custom", "refersTo": "command-line", "description": "Single command with pink rail.",
+      "html": "<pre class=\"ds-cmd\">/check-loop path/to/plan.md</pre>",
+      "css": ".ds-cmd{margin:0;padding:8px 12px;border-left:2px solid #ff3d8b;background:rgba(5,5,5,.7);color:#cacccc;font:14.5px/1.55 Inconsolata,monospace}" }
+  ],
+  "narrative": {
+    "northStar": "Neon After Hours",
+    "overview": "A flat black room lit by one neon sign. The glitching, pink-tubed wordmark is the sign; everything else is a quiet console: hairline-ruled panels, monospace body text, pixel-mono labels, and square corners.",
+    "keyCharacteristics": ["Flat near-black ground, no gradients behind content, no rounded corners anywhere.","1px hairline grids instead of cards with shadows.","Three type voices: Inter ExtraBold lowercase headings, Inconsolata body, Departure Mono uppercase labels.","Pink is a signal, green is a pass, grey is everything else."],
+    "rules": [
+      { "name": "The Signal-Only Rule", "body": "Pink marks state, verdict, or action. It is never decoration. The sanctioned identity exceptions are the wordmark outline and solid pink on a heading's emphasized word.", "section": "colors" },
+      { "name": "The No-White Rule", "body": "The brightest text is paper (#cacccc). Never pure #fff.", "section": "colors" },
+      { "name": "The Lowercase Shout Rule", "body": "Display headings are always lowercase, ExtraBold, negatively tracked. Labels are always uppercase mono.", "section": "typography" },
+      { "name": "The Hairline Rule", "body": "Separation is a 1px line border or a 1px grid gap, never a shadow or a lifted card.", "section": "elevation" }
+    ],
+    "dos": ["Do separate content with 1px hairlines and grid gaps.","Do reserve pink for verdicts, active state, and actions (The Signal-Only Rule).","Do keep headings lowercase Inter 800 and labels uppercase Departure Mono.","Do keep every slide inside the shared frame so panels line up between slides.","Do disable reveal, glitch, and snap under prefers-reduced-motion."],
+    "donts": ["Don't round corners or add drop shadows.","Don't use pure white text or a non-black background.","Don't add a pointer-following glow or disc on the black ground (removed deliberately).","Don't introduce new accent hues beyond pink and green for UI state."]
+  }
+}
