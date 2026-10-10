@@ -1,16 +1,16 @@
 # check-loop
 
-check-loop is a Claude Code plugin that asks Codex to review a plan before you build it, check a research draft, or review code as you work through an approved plan.
+check-loop is a plugin for Claude Code and pi that asks Codex to review a plan before you build it, check a research draft, or review code as you work through an approved plan.
 
-Your session model runs the workflow and checks the review findings. A fresh subagent implements each step, using your session model unless you set an implementer model. Codex reviews the work using your chosen model and reasoning effort, or your existing Codex defaults.
+The model your session runs on is the orchestrator. It runs the workflow and checks the review findings. A fresh subagent implements each step on the same model unless you set an implementer model. Codex reviews the work with the model and reasoning effort you choose, or with your Codex defaults.
 
-A review finding needs evidence before it can block progress. The orchestrator checks the cited source instead of accepting a concern just because another model raised it.
+A review finding needs evidence before it can block progress. The orchestrator opens the cited source instead of accepting a concern because another model raised it.
 
 Current version: 5.1.0.
 
 ## Install
 
-You need Claude Code 2.1.257 or later, Node.js 18 or later, and an authenticated Codex CLI. The skills run on your session's current model, and execution's implementers inherit it unless you choose another.
+You need Claude Code 2.1.257 or later or pi, plus Node.js 18 or later and an authenticated Codex CLI.
 
 Install Codex and sign in from your terminal:
 
@@ -21,6 +21,8 @@ codex login
 
 On a headless machine, use `codex login --device-auth`.
 
+### Claude Code
+
 Run these commands inside Claude Code:
 
 ```text
@@ -29,9 +31,9 @@ Run these commands inside Claude Code:
 /reload-plugins
 ```
 
-The skills do not switch models. Pick the model and effort you want for the session (for example `claude --model fable`) before invoking them.
+The skills do not switch models. Start the session on the model and effort you want, for example with `claude --model fable`.
 
-### Update
+To update:
 
 ```text
 /plugin marketplace update lordknows13-check-loop
@@ -39,7 +41,15 @@ The skills do not switch models. Pick the model and effort you want for the sess
 /reload-plugins
 ```
 
-Restart Claude Code if the update requests it. Your reviewer settings live outside the plugin cache and survive updates.
+Restart Claude Code if the update asks you to. Updates keep your settings, because they live outside the plugin cache.
+
+### pi
+
+```bash
+pi install git:github.com/Novacon/check-loop
+```
+
+To use a local clone, pass its path instead: `pi install ./check-loop`. pi names the skills `/skill:check-loop`, `/skill:research`, `/skill:execute`, and `/skill:settings`. The examples below use the Claude Code names.
 
 ## Use it
 
@@ -50,9 +60,9 @@ Restart Claude Code if the update requests it. Your reviewer settings live outsi
 /check-loop --quick path/to/plan.md
 ```
 
-The orchestrator reads the plan and relevant repository files, then sends the plan to Codex. The first round is the one broad review. The orchestrator checks each finding, fixes the plan where the evidence supports a change, and later rounds only confirm those fixes and check the changed text. They don't reopen parts of the plan that didn't change.
+The orchestrator reads the plan and the repository files it refers to, then sends the plan to Codex. The first round is the only broad review. The orchestrator checks each finding and fixes the plan where the evidence supports a change. Later rounds confirm those fixes and check the changed text. They don't reopen parts of the plan that didn't change.
 
-You see one line per round. The loop stops when no verified blocking concern remains, after up to six rounds by default. `--quick` runs a single review pass. If the same blockers keep coming back, or the limit is reached with fixes Codex hasn't confirmed yet, the orchestrator asks you what to do: keep fixing, waive the named risks, run one confirmation round, or stop. The result lists what changed, what the orchestrator rejected and why, and any open questions.
+You see one line per round. The loop stops when no verified blocking concern remains, or after six rounds by default. `--quick` runs a single review pass. If the same blockers keep coming back, or the run hits the limit with fixes Codex hasn't confirmed, the orchestrator asks you what to do: keep fixing, waive the named risks, run one confirmation round, or stop. The result lists what changed, what the orchestrator rejected and why, and any open questions.
 
 An interrupted review resumes where it stopped the next time you run the command on the same plan.
 
@@ -72,21 +82,21 @@ You get one Markdown report with sources, remaining questions, and a record of t
 /check-loop:execute path/to/plan.md
 ```
 
-The orchestrator records the approved plan and the repository's starting state. For each step, it gives a fresh subagent a bounded task, runs the project's checks, and sends the relevant diff and results to Codex.
+The orchestrator records the approved plan and the repository's starting state. For each step, it gives a fresh subagent one bounded task, runs the project's checks, and sends the step's diff and check results to Codex.
 
-If the orchestrator verifies a blocking finding, a fresh subagent fixes it. Execution stops after three unsuccessful fix cycles. The orchestrator runs final checks and requests a final Codex review before handing the work back to you.
+If the orchestrator verifies a blocking finding, a fresh subagent fixes it. Execution stops after three unsuccessful fix attempts on a step. At the end, the orchestrator runs the full checks and asks Codex for a final review before handing the work back to you.
 
-Existing uncommitted work requires your decision before execution starts. Implementers do not stage or commit. Committing and pushing also require your approval.
+If you have uncommitted changes, execution asks before it starts whether to work in a separate worktree or include them. Implementers never stage or commit. The orchestrator commits or pushes only after you approve.
 
 You can omit the plan path or research question when the conversation already identifies exactly one.
 
-## Choose the reviewer
+## Settings
 
 ```text
 /check-loop:settings
 ```
 
-You can change the Codex model, reasoning effort, and plan or research round limit. For example:
+You can change the Codex model, reasoning effort, plan and research round limit, and implementer model. For example:
 
 ```text
 /check-loop:settings Use the Codex default model, high effort, and six review rounds for my user settings.
@@ -97,9 +107,9 @@ You can change the Codex model, reasoning effort, and plan or research round lim
 | Model | Your Codex configuration | An exact model ID your account supports, or `default` |
 | Reasoning effort | Your Codex configuration | An effort the selected model supports, or `default` |
 | Maximum review rounds | 6 | An integer from 1 to 40 |
-| Implementer model | Your session model | A model your host accepts for subagents (for example `opus` or `sonnet` in Claude Code, `provider/id` in pi), or `default` |
+| Implementer model | Your session model | A model name your host accepts for subagents, such as `opus` or `sonnet` in Claude Code or `provider/id` in pi, or `default` |
 
-Ask for user-wide settings or project-only settings. Model, effort, and round limit affect Codex. Implementer model affects only the subagents `execute` dispatches. The round limit applies to plans and research. It does not change execution's three-fix limit.
+Ask for user-wide settings or project-only settings. Model, effort, and round limit apply to Codex. The implementer model applies only to the subagents that `execute` starts. The round limit applies to plans and research and does not change execution's three-fix limit.
 
 Each plan or research run keeps the round limit and reviewer it started with. Reviews stop early when no verified blocker remains.
 
@@ -112,7 +122,7 @@ Each setting uses the first value defined in this order:
 3. `~/.claude/check-loop/config.json`.
 4. The plugin default.
 
-`CLAUDE_CONFIG_DIR` changes the user configuration directory. An omitted key inherits the next level. A `null` model or effort selects Codex's own setting, even when a lower level specifies a different value.
+`CLAUDE_CONFIG_DIR` changes the user configuration directory. An omitted key inherits the next level. A `null` model or effort selects Codex's own setting, and a `null` implementer model selects the session model, even when a lower level specifies a different value.
 
 From a clone of this repository, you can inspect or change settings directly:
 
@@ -144,9 +154,9 @@ Codex must cite a plan passage, source file, command result, or research source 
 
 Only verified critical or important findings can block progress. The orchestrator checks the citation and records whether it accepts, rejects, or counters the finding. Minor findings, inferences, and unanswered questions remain in the report without blocking the work.
 
-After the first round, a new finding can block only if the revision introduced it or it is a verified critical defect the first round missed. A rejected finding can be disputed once, with new evidence. Repeats of findings that are already decided are dropped.
+After the first round, a new finding can block only if the revision introduced it or it is a verified critical defect the first round missed. Codex can dispute a rejected finding once, with new evidence. The runner drops repeats of findings that already have a decision.
 
-The reviewer runs in a read-only sandbox. Credential-shaped values are redacted from every payload and from saved run state. A failed, empty, malformed, or timed-out response (20 minutes by default) is retried once and then stops the workflow. It never counts as approval.
+The reviewer runs in a read-only sandbox. The scripts redact credential-shaped values from every payload and from saved run state. Reviewer turns time out after 20 minutes by default. The scripts retry a failed, empty, malformed, or timed-out response once and then stop the workflow. Such a response never counts as approval.
 
 ## Check your setup
 
@@ -188,7 +198,7 @@ node plugins/check-loop/scripts/codex-invoke.mjs turn \
   --cwd "$(pwd)" --prompt-file prompt.md [--thread-id THREAD_ID]
 ```
 
-`round` prints the next action (`adjudicate`, `stalled`, `cap`, `done`, or `retry`), the blocking findings, and a one-line summary. Run state lives in `~/.claude/check-loop/runs/`. `turn` results include `threadId`, `response`, `model`, `effort`, `status`, and `error`. A status of `0` means the call succeeded, not that the reviewer approved the work.
+`round` prints the blocking findings, a one-line summary, and the next action, which is one of `adjudicate`, `stalled`, `cap`, `done`, or `retry`. Run state lives in `~/.claude/check-loop/runs/`. `turn` results include `threadId`, `response`, `model`, `effort`, `status`, and `error`. A status of `0` means the call succeeded, not that the reviewer approved the work.
 
 Successful turns report their effective model and effort, and later rounds reuse them. Native review can use a separate Codex `review_model`. If you did not request a model explicitly, native review reports `model: null` rather than guessing which model ran.
 
@@ -204,28 +214,28 @@ The tests cover settings precedence, invalid configuration, reviewer setting mis
 
 ## Changes in 5.1.0
 
-- **Uses your session model.** The skills no longer switch to Fable; they run on whatever model and effort the session uses.
-- **Configurable implementer model.** `execute`'s implementer and fixer subagents inherit the session model by default. Set `--implementer-model ID` in settings to choose another, or `default` to go back.
-- **Works in [pi](https://pi.dev).** The repository is also a pi package. Install it with `pi install git:github.com/Novacon/check-loop` (or a local clone path) and run the skills with `/skill:check-loop`, `/skill:research`, `/skill:execute`, and `/skill:settings`.
+- **Uses your session model.** The skills no longer switch to Fable. They run on the model and effort the session uses.
+- **Configurable implementer model.** The implementer and fixer subagents in `execute` use the session model by default. Set `--implementer-model ID` in settings to choose another, or `default` to go back.
+- **Works in [pi](https://pi.dev).** The repository is also a pi package. See [pi install](#pi).
 
 ## Changes in 5.0.0
 
 Reviews were slow and kept finding new problems in text the loop itself had just added. This release changes how rounds work, using ideas from other review tools:
 
 - **Later rounds only check the fixes.** Round 1 is the full review. Later rounds confirm each fix and report only regressions in the changed text or a missed critical defect, following the fix re-review in [Superpowers](https://github.com/obra/superpowers/blob/main/skills/subagent-driven-development/re-review-prompt.md). The rotating focus areas from 4.1 are gone, because they reopened text that hadn't changed.
-- **Diffs instead of the whole plan.** The full plan or report is sent once; later rounds send only the diff since the last review.
-- **The loop runs in code.** A new `round` command builds prompts, requests structured findings, numbers them, keeps the decision ledger, and decides when to stop. Stalls (the same blockers twice, or a fixed finding coming back) are detected the way [Plan Tango](https://github.com/egsok/plan-tango) does. Repeats are dropped, and a rejection can be disputed once, as in [Comfy's review ledger](https://github.com/Comfy-Org/github-workflows/tree/main/.github/cursor-review).
-- **No cliff at the round limit.** If the limit is reached with unconfirmed fixes, you can run one confirmation-only round instead of starting over.
-- **Resume.** Run state is saved after each round, so an interrupted review continues where it stopped.
+- **Diffs instead of the whole plan.** Round 1 sends the full plan or report. Later rounds send only the diff since the last review.
+- **The loop runs in code.** A new `round` command builds prompts, requests structured findings, numbers them, keeps the decision ledger, and decides when to stop. It detects stalls the way [Plan Tango](https://github.com/egsok/plan-tango) does, where a stall means the same blockers twice or a fixed finding coming back. It drops repeats and allows one dispute per rejection, as in [Comfy's review ledger](https://github.com/Comfy-Org/github-workflows/tree/main/.github/cursor-review).
+- **A confirmation round at the limit.** If a run hits the limit with unconfirmed fixes, you can run one confirmation-only round instead of starting over.
+- **Resume.** The runner saves state after each round, so an interrupted review continues where it stopped.
 - **Less noise.** One line per round and a short final report, with the full ledger in a file, as in [PGHQ second-opinion](https://github.com/PGHQdev/second-opinion).
 - **`--quick`** runs a single review pass.
 - **Execution** fix re-reviews send only the fix and the findings being fixed.
-- **Reliability.** Reviewer turns time out and are interrupted after 20 minutes, `turn` accepts `--prompt-file`, and credential-shaped values are redacted automatically.
+- **Reliability.** The transport interrupts reviewer turns after 20 minutes, `turn` accepts `--prompt-file`, and the scripts redact credential-shaped values.
 
 ## Changes in 4.1.0
 
 - Choose the reviewer model and effort, or inherit your Codex settings. Astra is no longer required.
-- Set the plan and research round limit. Later rounds checked additional risks, with the review rotation inspired by [Claudex](https://github.com/promptadvisers/claudex) (replaced in 5.0.0).
+- Set the plan and research round limit. Later rounds checked additional risks, with a review rotation inspired by [Claudex](https://github.com/promptadvisers/claudex). 5.0.0 replaced the rotation.
 - Treat missing or failed reviews as errors. The response handling draws on the [official Codex plugin's guidance](https://github.com/openai/codex-plugin-cc/blob/main/plugins/codex/skills/codex-result-handling/SKILL.md).
 - Fix ignored reviewer flags, missing effort on the initial thread, and truncated prompts containing `=`.
 
