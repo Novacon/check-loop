@@ -3,296 +3,137 @@ name: check-loop
 description: Refines implementation plans when they need adversarial architecture review, assumption checking, simplification, or evidence-backed consensus before implementation.
 model: fable
 effort: xhigh
-argument-hint: [plan-path]
+argument-hint: [--quick] [plan-path]
 ---
 
 # Fable-Codex plan refinement
 
 ## Overview
 
-Use Fable as plan owner and the configured Codex reviewer as an adversarial peer. Improve the plan rather than maximizing agreement.
+Fable owns the plan. The configured Codex reviewer critiques it in one persistent read-only thread. `codex-invoke.mjs round` runs the loop mechanics: it builds every reviewer prompt, redacts secrets, sends the whole plan only once and a diff afterwards, numbers findings, keeps the decision ledger, suppresses repeats, detects stalls, enforces the round limit, and saves resumable state. Fable checks evidence, decides, and edits the plan.
 
 **Core principle:** No evidence, no blocking finding. A confident reviewer statement is still only a claim until Fable checks its source.
 
+**Shape of a run:** round 1 is the one broad review. Every later round only confirms Fable's fixes and checks the changed text for regressions. A later round can raise a new blocker only for a regression in the diff or a VERIFIED critical defect round 1 missed; the runner records anything else as a nonblocking note.
+
 ## Input
 
-Treat `$ARGUMENTS` as the plan path. If it is empty, use the plan active in the conversation or locate one in the working directory. Ask for the path only when no single plan can be identified.
+`$ARGUMENTS` holds the plan path and an optional `--quick` flag. If the path is empty, use the plan active in the conversation or locate one in the working directory. Ask for the path only when no single plan can be identified.
 
-Read:
+`--quick` means one review pass: add `--max-rounds 1` to the first `round` call. Use it for small or low-risk plans.
 
-1. The complete plan.
-2. The original user request.
-3. Repository instructions and files needed to verify claims.
+Read the complete plan, the original user request, and the repository files needed to verify claims.
 
-Keep the original plan content for the final comparison.
+## Preflight
 
-## Reviewer configuration and preflight
-
-This skill's frontmatter selects Fable at `xhigh` for the current turn. Stop if Claude Code reports that `fable` was rejected, unavailable, or replaced. Reviewer settings do not change Fable's role.
-
-Before starting review, resolve settings for the current working directory:
+This skill's frontmatter selects Fable at `xhigh`. Stop if Claude Code reports that `fable` was rejected, unavailable, or replaced.
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" config --cwd "$(pwd)"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" setup --cwd "$(pwd)"
 ```
 
-The command prints one JSON object:
+Proceed only when setup reports `Status: ready`. The first round freezes the reviewer model, effort, and round limit for the whole run; an explicit model or effort that is unavailable or substituted fails the round rather than switching reviewers.
+
+## Start or resume
+
+Check for an existing review of this plan:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" report --cwd "$(pwd)" --artifact PLAN_PATH
+```
+
+- No review found, or the report shows a finished outcome: start a new run.
+- `AWAITING ADJUDICATION (...)`: resume it. Adjudicate the listed findings from the run file, then continue with the next `round` call. Do not start over unless the user asks.
+
+Start a new run by writing the original user request to a temporary file and calling:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" round \
+  --cwd "$(pwd)" --kind plan --artifact PLAN_PATH \
+  --request-file REQUEST_FILE [--new] [--max-rounds 1]
+```
+
+Add `--new` when a finished run exists. Do not paste protected content (`*.env*`, `*.secret*`, `*credentials*`, `**/secrets/**`) into the request or plan; the runner also redacts credential-shaped values from every payload and from its state file.
+
+## The round result
+
+Each `round` call prints one JSON object:
 
 ```json
-{"model":null,"effort":null,"maxRounds":6}
+{"status":0,"error":null,"round":1,"maxRounds":6,"next":"adjudicate","summary":"Round 1/6: 2 new blocker(s) (F1, F2), 3 note(s).","blockers":[...],"notes":[...],"unconfirmed":[],"questions":[],"reviewer":{"model":"...","effort":"..."},"runFile":"..."}
 ```
 
-`null` means inherit the corresponding Codex default. `maxRounds` is already resolved from CLI/project/user/default precedence and must be between 1 and 40. Freeze all three values for this invocation; do not re-resolve them between rounds. Use the literal `default` for a null model or effort when constructing CLI calls.
+Show the user only the `summary` line per round. Do not narrate bookkeeping.
 
-Run the transport preflight with the frozen settings:
+Act on `next`:
 
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" setup \
-  --cwd "$(pwd)" \
-  --model "MODEL_SETTING_OR_default" \
-  --effort "EFFORT_SETTING_OR_default" \
-  --max-rounds MAX_ROUNDS
-```
-
-Proceed only when setup reports the Codex CLI installed, authentication ready, and the chosen model, effort, and maximum review rounds correctly. Setup does not test model availability; the first review turn does. If an explicit model or effort is unavailable, rejected, or silently substituted, stop rather than changing reviewers.
-
-## Codex transport
-
-Start round 1 with the frozen setting values:
-
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn \
-  --cwd "$(pwd)" \
-  --model "MODEL_SETTING_OR_default" \
-  --effort "EFFORT_SETTING_OR_default" \
-  --prompt "PROMPT"
-```
-
-The command prints JSON:
-
-```json
-{"threadId":"...","response":"...","model":"...","effort":"...","status":0,"error":null}
-```
-
-Record the returned `model` and `effort` as the actual reviewer settings. Show them with every round result. Continue every later round with the returned thread ID and the same explicit actual values when non-null; if a returned value is null, continue with literal `default` and report it as `Codex default (not reported)` rather than inventing a value:
-
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn \
-  --cwd "$(pwd)" \
-  --thread-id THREAD_ID \
-  --model "ACTUAL_MODEL_OR_default" \
-  --effort "ACTUAL_EFFORT_OR_default" \
-  --prompt "PROMPT"
-```
-
-Keep one read-only thread for the entire refinement loop. A continuation that reports a different non-null model or effort is a configuration failure, not a valid review round.
-
-### Review-result gate
-
-Before adjudication, require a zero command exit, `status: 0`, `error: null`, and a substantive response that follows the requested finding or approval format. A failed command, empty or malformed response, or authentication error is an incomplete review, not "no findings." Preserve the plan, report the actionable error, and stop; do not manufacture a substitute Codex verdict.
-
-Preserve Codex's exact citations and uncertainty labels when reporting findings, then record Fable's independent adjudication separately. A completed transport is not itself plan approval.
-
-## Evidence contract
-
-Require every concern to use all fields:
-
-```text
-F1 [critical | important | minor] [VERIFIED | INFERENCE | UNVERIFIED]
-Claim:
-Evidence: exact plan quote, file:line, or command output
-Impact:
-Failure condition:
-Recommended correction:
-```
-
-Interpret verification status strictly:
-
-| Status | Meaning | Blocking |
-|---|---|---|
-| `VERIFIED` | The cited source directly supports the claim. | Only critical or important findings may block. |
-| `INFERENCE` | Cited facts support a conclusion that has not been reproduced. | No. Ask what would verify it. |
-| `UNVERIFIED` | Evidence is missing or inaccessible. | No. Supply context or record a question. |
-
-Only VERIFIED critical or important findings may block or change the plan, and Fable must independently verify the cited source first. Model agreement, confident wording, severity labels, and repeated assertions are not evidence.
-
-Reject invented, stale, mismatched, or inaccessible citations. Supply missing context and request a new review instead of guessing.
-
-## Secret handling
-
-Before sending any payload to Codex, inspect it and redact secret or credential values. Omit contents from `*.env*`, `*.secret*`, `*credentials*`, `**/secrets/**`, ignored environment files, binary payloads, and dependency caches. Name an omitted path only when Codex needs the omission context; never include its content.
-
-## Review focus by round
-
-Every review round must check all applicable core risks: architecture and correctness, security and data integrity, operations and recovery, scope, evidence quality, edge cases, and unnecessary complexity. The rotating perspective is an additional focus, never permission to skip another applicable risk:
-
-| Round | Additional focus |
+| `next` | Action |
 |---|---|
-| 1 | Architecture and correctness: design flaws, broken assumptions, ambiguous requirements, stress cases, and whether the plan solves the requested problem simply. |
-| 2 | Security and data integrity: authorization, validation, injection, concurrency, idempotency, partial failure, secrets, auditability, and data loss. |
-| 3+ | Operations and recovery: rollback, observability, rollout safety, version skew, compatibility, capacity, blast radius, and recovery. Deepen these angles on later rounds rather than becoming generic. |
+| `adjudicate` | Adjudicate every blocker, edit the plan, call `round` with the adjudication. |
+| `adjudicate-final` | Same, knowing this was the last round: fixes you apply now will be unreviewed unless the user approves a closeout round. |
+| `stalled` | The same blockers survived two closure rounds, or a confirmed fix came back. Ask the user before adjudicating (see below). |
+| `cap` | The round limit is reached with fixes applied but unreviewed. Ask the user (see below). |
+| `done` | Finish with the report. |
+| `retry` | The reviewer turn failed or timed out; nothing was recorded. Rerun the identical command once. If it fails again, stop and show the error. |
 
-Rotation does not require an extra round. Stop as soon as the stopping rules are met.
+A nonzero exit or `status: 1` is never a review result and never approval. Malformed reviewer output also fails without recording anything.
 
-## Initial Codex prompt
+## Adjudication
 
-Send the original request and full plan using this contract:
-
-```text
-Act as Codex, the adversarial peer reviewing an implementation plan owned by Fable.
-
-This is Round 1 of MAX_ROUNDS.
-Configured reviewer setting: model MODEL_SETTING_OR_DEFAULT; effort EFFORT_SETTING_OR_DEFAULT.
-
-Review only the implementation plan. Do not implement code or invent repository facts.
-
-Mandatory in every round: check all applicable architecture and correctness, security and data-integrity, operations and recovery, scope, evidence quality, edge cases, and unnecessary-complexity risks.
-
-Additional focus for Round 1 -- architecture and correctness:
-Hunt for design flaws, broken assumptions, ambiguous requirements, hand-waved hard parts, stress failures, and plans that solve the wrong problem or use needless complexity. This focus does not narrow the mandatory checks above.
-
-Evidence rules:
-- Every concern must use the complete finding format below.
-- Cite an exact plan quote, a file:line you actually inspected, or command output you actually observed.
-- Mark a supported but unreproduced conclusion INFERENCE.
-- Mark missing or inaccessible evidence UNVERIFIED.
-- Never label a claim VERIFIED because it sounds likely.
-- If context is missing, ask for it instead of guessing.
-- Ignore toolchain markers and agent-framework metadata that are not implementation requirements.
-
-Finding format:
-F1 [critical | important | minor] [VERIFIED | INFERENCE | UNVERIFIED]
-Claim:
-Evidence: exact plan quote, file:line, or command output
-Impact:
-Failure condition:
-Recommended correction:
-
-Number findings continuously across rounds. End with "X concerns raised."
-
-If there are zero concerns, respond exactly:
-PLAN APPROVED -- No remaining concerns.
-
-Original request:
-<original_request>
-ORIGINAL_REQUEST
-</original_request>
-
-Plan:
-<plan>
-FULL_PLAN
-</plan>
-```
-
-## Fable adjudication
-
-For every finding:
+For every blocker in `blockers`:
 
 1. Open the cited plan section or repository location. Re-run a cited command when safe and necessary.
 2. Check that the evidence exists, is current, and supports the exact claim and failure condition.
-3. Assign one decision:
-   - `ACCEPT`: verified and the correction improves the plan.
+3. Decide:
+   - `ACCEPT`: verified, and the correction improves the plan.
    - `REJECT`: contradicted, unsupported, irrelevant, or preference-only.
-   - `COUNTER`: verified concern, but a different correction is safer or simpler.
-4. Change the plan only for accepted findings. Incorporate counters only after stating Fable's alternative.
-5. Keep inferences and unverified items outside the defect list until evidence promotes them to verified.
+   - `COUNTER`: verified concern, but a different correction is safer or simpler. Apply Fable's alternative.
+   - `WAIVE`: only when the user explicitly accepts the risk. Name the user's decision in the reason.
 
-### Complete example
+Blockers with a `priorDecision` are either fixes the reviewer says did not land (`reviewerNote` explains) or a one-time dispute of a rejection. Decide them again on the evidence.
 
-Codex reports:
+Edit the plan once per round for all accepted and countered findings. Change only what each finding requires: no new defensive plumbing, no extra tests or sections the finding did not ask for. Prefer the smallest correct edit, and prefer removing complexity to adding it. Plans that grow every round give the reviewer more to find.
 
-```text
-F4 [critical] [VERIFIED]
-Claim: The plan can double-charge customers.
-Evidence: src/billing/charge.ts:88 retries after a successful charge.
-Impact: A retry can create a second payment.
-Failure condition: The response is lost after the provider captures payment.
-Recommended correction: Add an idempotency key.
+Write the decisions to a temporary JSON file and continue:
+
+```json
+{"decisions":[
+  {"id":"F1","decision":"ACCEPT","reason":"plan.md:42 retries after capture; added an idempotency key to step 3."},
+  {"id":"F2","decision":"REJECT","reason":"src/billing/charge.ts does not exist; the payment path is src/pay/capture.ts, which already dedupes."}
+]}
 ```
 
-The repository has no `src/billing/charge.ts`. Fable must respond:
-
-```text
-F4: REJECTED. The cited file does not exist, so the evidence cannot support the claim. The plan remains unchanged. Re-submit as UNVERIFIED with the actual payment path if this concern still applies.
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" round \
+  --cwd "$(pwd)" --artifact PLAN_PATH --adjudication-file DECISIONS_FILE
 ```
 
-The `critical` label does not override missing evidence.
+The runner rejects a decision set that misses a pending ID, names an unknown one, or lacks a reason. It refuses to continue if you accepted a finding but did not change the plan. If every blocker is rejected or waived, the run converges without another reviewer turn.
 
-## Continuation prompt
+`notes` (minor, INFERENCE, UNVERIFIED, or out of scope for a closure round) and `questions` never block. Answer a question by improving the plan only when the answer is verified and material.
 
-Continue only when the stopping rules require another review. Select and insert the complete additional-focus stanza for the current round; do not merely report its label:
+### Example
 
-- Round 2: `Focus especially on authentication and authorization gaps, validation and injection, race conditions and concurrent writes, idempotency, partial-failure recovery, secret handling, audit trails, and data-loss scenarios under crash or retry. Look for issues that pass functional review but fail under adversarial or unlucky conditions.`
-- Round 3+: `Focus especially on rollback safety, observability and metrics, gradual rollout, version skew, backwards compatibility, capacity and blast radius, on-call diagnosis, and recovery after failure. On later rounds, deepen these operations and recovery angles rather than becoming generic.`
+The reviewer reports F4 `[critical] [VERIFIED]`: "The plan can double-charge customers", citing `src/billing/charge.ts:88`. The repository has no such file. Decision: `REJECT` with the reason "src/billing/charge.ts does not exist; the cited evidence cannot support the claim." The `critical` label does not override missing evidence.
 
-The continuation sent to Codex must therefore contain substantive focus text in this template:
+## Asking the user
 
-```text
-Fable independently checked every cited source.
+Ask only in these cases, with named options:
 
-This is Round N of MAX_ROUNDS.
-Frozen reviewer: model ACTUAL_MODEL_OR_DEFAULT; effort ACTUAL_EFFORT_OR_DEFAULT.
+- **Stalled, or a verified blocker you cannot fix:** list the blocker IDs and titles, then offer *Keep fixing* (adjudicate normally), *Waive these risks* (adjudicate them as `WAIVE`), or *Stop here* (finish with the report and the status `BLOCKED — NOT APPROVED`).
+- **Cap:** list the unconfirmed fix IDs, then offer *Run one closeout round* (`round --closeout`, which only confirms fixes and checks for regressions), *Accept as is* (finish with the report; the outcome stays `FIXES APPLIED — UNCONFIRMED`), or *Stop here*.
 
-Mandatory in every round: check all applicable architecture and correctness, security and data-integrity, operations and recovery, scope, evidence quality, edge cases, and unnecessary-complexity risks.
+Never describe an unconfirmed or blocked result as approved, and never start a fresh `--new` run to get around the round limit.
 
-Additional focus for Round N -- FOCUS_LABEL:
-FULL_FOCUS_TEXT_FOR_THIS_ROUND
-This focus does not narrow the mandatory checks above.
-
-Adjudication:
-- F1: ACCEPTED -- verified evidence and reason
-- F2: REJECTED -- contradictory or missing evidence and reason
-- F3: COUNTERED -- verified concern, safer alternative and reason
-
-Unverified questions:
-- List every INFERENCE or UNVERIFIED item that still needs evidence.
-
-Revised plan:
-<plan>
-FULL_REVISED_PLAN
-</plan>
-
-Review the adjudication and revised plan.
-- Do not repeat an addressed concern without new evidence.
-- Continue finding numbers for genuinely new concerns.
-- Use the complete evidence contract for every concern.
-- If Fable rejected evidence incorrectly, cite the exact missed source.
-- If no verified concern remains, respond exactly:
-PLAN APPROVED -- No remaining concerns.
-```
-
-## Loop and stopping rules
-
-Count each completed Codex response as one review round. Conclude refinement immediately when Codex approves or when no independently verified critical or important finding remains after adjudication. A rejected, minor, inferred, or unverified item does not block convergence; retain it in the appropriate final-report category. Never run another round only to reach a different focus, and never waive a verified blocker because the frozen limit was reached.
-
-After each round, report:
-
-```text
-Round N/MAX_ROUNDS — Codex model: ACTUAL_MODEL; effort: ACTUAL_EFFORT
-Concerns: X
-- Accepted: F...
-- Rejected: F...
-- Countered: F...
-- Unverified questions: F...
-```
-
-Do not begin a round beyond the frozen `maxRounds`. At the cap, conclude only if no independently verified critical or important finding remains. Otherwise preserve the current plan and adjudication record, mark refinement `BLOCKED AT ROUND LIMIT`, list unresolved verified disagreements separately from unverified hypotheses, and ask the user how to resolve the verified blocker. Never describe a capped result with blockers as approved.
-
-If the user cancels, stop the current invocation, leave the plan and adjudication record in their present state, and report `CANCELLED — NOT APPROVED`. Cancellation creates no durable resume state and is not convergence.
+If the user cancels, stop. The plan and run state stay as they are, and the next `/check-loop` on the same plan resumes the run. Report `CANCELLED — NOT APPROVED`.
 
 ## Final report
 
-Report:
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" report --cwd "$(pwd)" --artifact PLAN_PATH
+```
 
-- Rounds completed and convergence status.
-- Frozen round limit and actual Codex model and effort.
-- Verified changes made to the plan.
-- Decisions Fable defended successfully.
-- Unresolved verified disagreements.
-- Unverified questions that never obtained evidence.
-- A concise original-to-final plan diff.
-
-The updated plan file is the source of truth.
+Show its output. Add at most two sentences of your own if something in it needs explaining. The plan file is the source of truth; the run file holds the full ledger.
 
 ## Common mistakes
 
@@ -302,6 +143,8 @@ The updated plan file is the source of truth.
 | Treating two-model agreement as proof | Inspect the cited source. |
 | Blocking on a plausible race or edge case | Mark it inference until reproduced or directly supported. |
 | Trusting a file:line without opening it | Read the current file and confirm line drift. |
+| Fixing a finding with a new subsystem | Make the smallest edit that resolves the verified failure. |
+| Hand-building reviewer prompts with `turn` | Use `round`; it owns prompts, diffs, and the ledger. |
 | Asking Codex to rewrite the plan | Fable owns plan decisions and edits. |
 
 ## Red flags

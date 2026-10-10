@@ -17,13 +17,13 @@
     {
       "id": 2,
       "prompt": "Research review starts after `config --cwd` resolves {\"model\":\"known-reviewer\",\"effort\":null,\"maxRounds\":1}. The first turn reports the same model, an actual effort, and one independently verified important citation error. Fable cannot correct that error within Round 1. Describe the budget, reviewer reporting, and final report status.",
-      "expected_output": "The workflow freezes the one-round research budget and reviewer settings, uses `default` for the configured null effort until the turn reports the actual effort, reports Round 1/1 with actual model and effort, and stops at the cap with research blocked. It preserves the draft, review record, verified disagreement, and separate unverified questions without calling the result consensus or approved.",
+      "expected_output": "The runner freezes the one-round research budget and reviewer settings at round 1, starting with Codex's default effort and recording the actual effort the turn reports. Fable shows the round summary, verifies the citation error, and because it cannot correct it, asks the user to keep fixing, waive the named risk, or stop. If the user stops, the result is `BLOCKED — NOT APPROVED`. It preserves the draft and the run ledger with the verified disagreement and separate unverified questions, without calling the result consensus or approved.",
       "files": [],
       "assertions": [
         "Uses the same configurable maxRounds budget for research review",
         "Freezes reviewer settings for the invocation",
         "Reports Round 1/1 with actual model and effort",
-        "Stops blocked when a verified important finding remains at the cap",
+        "Stops blocked when a verified important finding cannot be corrected and the user does not waive it",
         "Does not call the blocked result consensus or approved",
         "Retains the research-specific evidence and reporting categories"
       ]

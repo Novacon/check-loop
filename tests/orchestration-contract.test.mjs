@@ -109,6 +109,10 @@ test("unsupported settings and misspelled CLI flags fail visibly", (t) => {
     ["setup", "--modle", "reviewer"],
     ["turn", "--prompt", "review", "--modle", "reviewer"],
     ["review", "--modle", "reviewer"],
+    ["round", "--artifact", "plan.md", "--modle", "reviewer"],
+    ["report", "--artifact", "plan.md", "--verbose"],
+    ["turn", "--prompt", "review", "--timeout-minutes", "0"],
+    ["turn", "--prompt", "a", "--prompt-file", "b"],
     ["config", "unexpected"],
     ["config", "--model"],
   ]) {

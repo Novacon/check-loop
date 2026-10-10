@@ -7,6 +7,7 @@
  * configuration, user configuration, and finally Codex/default plugin values.
  */
 
+import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
@@ -19,6 +20,7 @@ import {
 } from "./lib/codex.mjs";
 import { resolveReviewTarget } from "./lib/git.mjs";
 import { resolveReviewConfig, updateReviewConfig } from "./lib/review-config.mjs";
+import { loadRun, renderReport, runReviewRound } from "./lib/review-loop.mjs";
 import { buildReviewResult } from "./lib/review-result.mjs";
 import { resolveWorkspaceRoot } from "./lib/workspace.mjs";
 
@@ -70,7 +72,7 @@ function parseCommandArgs(argv, config, command) {
 
     if (equalsIndex === -1) {
       const next = argv[index + 1];
-      if (next === undefined || next.startsWith("-")) {
+      if (next === undefined || (next.startsWith("-") && next !== "-")) {
         throw new Error(`Missing value for --${key}.`);
       }
       index += 1;
@@ -112,6 +114,45 @@ function displaySetting(value) {
   return value ?? "Codex default";
 }
 
+const DEFAULT_TIMEOUT_MINUTES = 20;
+
+function parseTimeoutMs(options) {
+  const raw = options["timeout-minutes"];
+  if (raw === undefined) {
+    return DEFAULT_TIMEOUT_MINUTES * 60_000;
+  }
+  if (!/^\d+$/.test(raw) || Number(raw) < 1 || Number(raw) > 240) {
+    throw new Error("Invalid --timeout-minutes: expected an integer from 1 through 240.");
+  }
+  return Number(raw) * 60_000;
+}
+
+function readPrompt(options, command) {
+  if (options.prompt !== undefined && options["prompt-file"] !== undefined) {
+    throw new Error(`Invalid ${command} options: use either --prompt or --prompt-file, not both.`);
+  }
+  if (options["prompt-file"] !== undefined) {
+    const file = options["prompt-file"];
+    return fs.readFileSync(file === "-" ? 0 : path.resolve(process.cwd(), file), "utf8");
+  }
+  return options.prompt;
+}
+
+function readJsonFile(file, label) {
+  try {
+    return JSON.parse(fs.readFileSync(path.resolve(process.cwd(), file), "utf8"));
+  } catch (error) {
+    throw new Error(`Could not read ${label} ${file}: ${error.message}`);
+  }
+}
+
+function writeProgress(event) {
+  const msg = typeof event === "string" ? event : event?.message;
+  if (msg) {
+    process.stderr.write(`[codex] ${msg}\n`);
+  }
+}
+
 function writeCommandResult(result, response) {
   const payload = buildReviewResult(result, response);
   process.stdout.write(`${JSON.stringify(payload)}\n`);
@@ -127,12 +168,13 @@ function writeCommandResult(result, response) {
 
 async function handleTurn(argv) {
   const options = parseCommandArgs(argv, {
-    valueOptions: ["prompt", "thread-id", "cwd", "model", "effort"],
+    valueOptions: ["prompt", "prompt-file", "thread-id", "cwd", "model", "effort", "timeout-minutes"],
   }, "turn");
 
-  if (!options.prompt) {
+  const prompt = readPrompt(options, "turn");
+  if (!prompt?.trim()) {
     throw new Error(
-      "Usage: node codex-invoke.mjs turn --prompt <text> [--thread-id <id>] [--cwd <path>] [--model <id|default>] [--effort <level|default>]"
+      "Usage: node codex-invoke.mjs turn (--prompt <text> | --prompt-file <path|->) [--thread-id <id>] [--cwd <path>] [--model <id|default>] [--effort <level|default>] [--timeout-minutes <n>]"
     );
   }
 
@@ -142,20 +184,88 @@ async function handleTurn(argv) {
 
   const result = await runAppServerTurn(workspaceRoot, {
     resumeThreadId: options["thread-id"] ?? null,
-    prompt: options.prompt,
+    prompt,
     model: config.model,
     effort: config.effort,
     sandbox: "read-only",
     persistThread: true,
-    onProgress: (event) => {
-      const msg = typeof event === "string" ? event : event?.message;
-      if (msg) {
-        process.stderr.write(`[codex] ${msg}\n`);
-      }
-    },
+    timeoutMs: parseTimeoutMs(options),
+    onProgress: writeProgress,
   });
 
   writeCommandResult(result, result.finalMessage);
+}
+
+// ---------------------------------------------------------------------------
+// round -- one deterministic plan or research review round
+// ---------------------------------------------------------------------------
+
+async function handleRound(argv) {
+  const options = parseCommandArgs(argv, {
+    valueOptions: [
+      "kind", "artifact", "request-file", "adjudication-file", "cwd",
+      "model", "effort", "max-rounds", "timeout-minutes",
+    ],
+    booleanOptions: ["new", "closeout"],
+  }, "round");
+
+  if (!options.artifact) {
+    throw new Error(
+      "Usage: node codex-invoke.mjs round --artifact <path> [--kind plan|research] [--request-file <path>] [--adjudication-file <path>] [--new] [--closeout] [--model <id|default>] [--effort <level|default>] [--max-rounds <1..40>] [--timeout-minutes <n>] [--cwd <path>]"
+    );
+  }
+
+  const cwd = resolveCwd(options);
+  const workspaceRoot = resolveWorkspaceRoot(cwd);
+  const overrides = reviewOverrides(options, true);
+  const existing = options.new ? null : loadRun(path.resolve(cwd, options.artifact));
+  if (existing && Object.keys(overrides).length > 0) {
+    throw new Error("Reviewer settings are frozen for a run in progress. Pass --new to start over with different settings.");
+  }
+  const timeoutMs = parseTimeoutMs(options);
+
+  const payload = await runReviewRound({
+    cwd,
+    artifact: options.artifact,
+    kind: options.kind,
+    newRun: options.new === true,
+    closeout: options.closeout === true,
+    requestText: options["request-file"] ? fs.readFileSync(path.resolve(cwd, options["request-file"]), "utf8") : undefined,
+    adjudication: options["adjudication-file"] ? readJsonFile(options["adjudication-file"], "adjudication file") : null,
+    settings: existing ? undefined : resolveReviewConfig(cwd, overrides),
+    transport: async (prompt, turn) => {
+      const result = await runAppServerTurn(workspaceRoot, {
+        resumeThreadId: turn.threadId,
+        prompt,
+        model: turn.model,
+        effort: turn.effort,
+        outputSchema: turn.outputSchema,
+        sandbox: "read-only",
+        persistThread: true,
+        timeoutMs,
+        onProgress: writeProgress,
+      });
+      return buildReviewResult(result, result.finalMessage);
+    },
+  });
+
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+  if (payload.status !== 0) {
+    process.stderr.write(`[codex] ${payload.error}\n`);
+    process.exitCode = 1;
+  }
+}
+
+function handleReport(argv) {
+  const options = parseCommandArgs(argv, { valueOptions: ["artifact", "cwd"] }, "report");
+  if (!options.artifact) {
+    throw new Error("Usage: node codex-invoke.mjs report --artifact <path> [--cwd <path>]");
+  }
+  const run = loadRun(path.resolve(resolveCwd(options), options.artifact));
+  if (!run) {
+    throw new Error(`No check-loop review found for ${options.artifact}.`);
+  }
+  process.stdout.write(`${renderReport(run)}\n`);
 }
 
 // ---------------------------------------------------------------------------
@@ -164,7 +274,7 @@ async function handleTurn(argv) {
 
 async function handleReview(argv) {
   const options = parseCommandArgs(argv, {
-    valueOptions: ["scope", "base", "cwd", "model", "effort"],
+    valueOptions: ["scope", "base", "cwd", "model", "effort", "timeout-minutes"],
   }, "review");
 
   const cwd = resolveCwd(options);
@@ -189,12 +299,8 @@ async function handleReview(argv) {
     target: nativeTarget,
     model: config.model,
     effort: config.effort,
-    onProgress: (event) => {
-      const msg = typeof event === "string" ? event : event?.message;
-      if (msg) {
-        process.stderr.write(`[codex] ${msg}\n`);
-      }
-    },
+    timeoutMs: parseTimeoutMs(options),
+    onProgress: writeProgress,
   });
 
   writeCommandResult(result, result.reviewText);
@@ -277,11 +383,13 @@ async function main() {
     process.stdout.write([
       "Usage:",
       "  node codex-invoke.mjs config [--cwd <path>] [--project] [--model <id|default>] [--effort <level|default>] [--max-rounds <1..40>]",
-      "  node codex-invoke.mjs turn --prompt <text> [--thread-id <id>] [--cwd <path>] [--model <id|default>] [--effort <level|default>]",
-      "  node codex-invoke.mjs review [--scope <auto|working-tree|branch>] [--base <ref>] [--cwd <path>] [--model <id|default>] [--effort <level|default>]",
+      "  node codex-invoke.mjs round --artifact <path> [--kind plan|research] [--request-file <path>] [--adjudication-file <path>] [--new] [--closeout] [--model <id|default>] [--effort <level|default>] [--max-rounds <1..40>] [--timeout-minutes <n>] [--cwd <path>]",
+      "  node codex-invoke.mjs report --artifact <path> [--cwd <path>]",
+      "  node codex-invoke.mjs turn (--prompt <text> | --prompt-file <path|->) [--thread-id <id>] [--cwd <path>] [--model <id|default>] [--effort <level|default>] [--timeout-minutes <n>]",
+      "  node codex-invoke.mjs review [--scope <auto|working-tree|branch>] [--base <ref>] [--cwd <path>] [--model <id|default>] [--effort <level|default>] [--timeout-minutes <n>]",
       "  node codex-invoke.mjs setup [--cwd <path>] [--model <id|default>] [--effort <level|default>] [--max-rounds <1..40>]",
       "",
-      "Reviewer model and effort default to the effective Codex settings.",
+      "Reviewer model and effort default to the effective Codex settings. Reviewer turns time out after 20 minutes by default.",
       "",
     ].join("\n"));
     return;
@@ -290,6 +398,12 @@ async function main() {
   switch (subcommand) {
     case "config":
       handleConfig(argv);
+      break;
+    case "round":
+      await handleRound(argv);
+      break;
+    case "report":
+      handleReport(argv);
       break;
     case "turn":
       await handleTurn(argv);
@@ -301,7 +415,7 @@ async function main() {
       handleSetup(argv);
       break;
     default:
-      throw new Error(`Unknown subcommand: ${subcommand}. Use: config, turn, review, setup`);
+      throw new Error(`Unknown subcommand: ${subcommand}. Use: config, round, report, turn, review, setup`);
   }
 }
 

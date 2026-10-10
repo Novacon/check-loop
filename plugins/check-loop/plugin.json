@@ -1,6 +1,6 @@
 {
   "name": "check-loop",
-  "version": "4.1.0",
+  "version": "5.0.0",
   "description": "Fable-orchestrated plan refinement, research, and execution with Opus implementers and configurable Codex review",
   "author": {
     "name": "lordknows13"

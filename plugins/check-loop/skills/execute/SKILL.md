@@ -100,7 +100,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn \
   --cwd "$(pwd)" \
   --model "MODEL_SETTING_OR_default" \
   --effort "EFFORT_SETTING_OR_default" \
-  --prompt "PROMPT"
+  --prompt-file PROMPT_FILE
 ```
 
 Initial prompt:
@@ -158,10 +158,10 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn \
   --thread-id THREAD_ID \
   --model "ACTUAL_MODEL_OR_default" \
   --effort "ACTUAL_EFFORT_OR_default" \
-  --prompt "PROMPT"
+  --prompt-file PROMPT_FILE
 ```
 
-A continuation that reports a different non-null model or effort is a configuration failure, not a valid review.
+Write each prompt to a temporary file and pass it with `--prompt-file`; large diffs do not fit safely in a shell argument. A continuation that reports a different non-null model or effort is a configuration failure, not a valid review. Reviewer turns time out after 20 minutes (`--timeout-minutes` to change) and are interrupted; a timeout or other transport failure records nothing, so rerun the same turn once before stopping.
 
 ## Execute each step
 
@@ -299,11 +299,35 @@ Complete the step when Codex returns `STEP APPROVED` or when no independently ve
 
 For each accepted or countered blocking finding:
 
-1. Dispatch a fresh Opus fixer with the verified finding, chosen correction, step contract, and current context.
-2. Inspect the fix.
-3. Re-run step validation.
-4. Recompute the filtered step diff.
-5. Re-submit it in the same Codex thread.
+1. Before dispatching, snapshot the working tree (the fix base).
+2. Dispatch a fresh Opus fixer with the verified finding, chosen correction, step contract, and current context.
+3. Inspect the fix.
+4. Re-run step validation.
+5. Send a fix re-review in the same Codex thread. Do not resend the step diff: the reviewer has already reviewed everything outside the fix.
+
+Fix re-review packet:
+
+```text
+Re-review the fix for Step N. Review only the fix delta below; do not re-review code outside it.
+
+Findings being fixed:
+- F3 [important] TITLE -- Fable's chosen correction
+
+For each listed finding, answer ADDRESSED or NOT ADDRESSED with evidence from the fix delta. Report a new finding only if the fix delta itself introduces it, using the evidence contract.
+
+Fix delta (fix base to now):
+<diff>
+FILTERED_FIX_DELTA
+</diff>
+
+Validation after the fix:
+<validation>
+COMMANDS_AND_OBSERVED_OUTPUT
+</validation>
+
+If every listed finding is addressed and the delta adds no concern, respond exactly:
+STEP APPROVED
+```
 
 Dispatch at most three reviewer-driven Opus fixers for a step. If verified critical or important findings remain after the third fix attempt, stop and ask the user to resolve them. Do not escalate unsupported hypotheses as defects.
 
@@ -337,7 +361,7 @@ FINAL APPROVED -- No verified blocking findings.
 
 Treat the final review output as claims, not proof. Fable must independently verify every cited source and reconstruct each concern using the evidence contract before it can block. Missing evidence makes the item nonblocking.
 
-Use the same accept, reject, and counter rules. Dispatch at most three reviewer-driven Opus fixers during final review; after each accepted fix, re-run full verification and send a new sanitized packet. If a verified blocker remains after the third fix attempt, stop for user resolution.
+Use the same accept, reject, and counter rules. Dispatch at most three reviewer-driven Opus fixers during final review; after each accepted fix, re-run full verification and send a fix re-review packet (the findings being fixed plus the filtered fix delta and new validation output), not a new full packet. If a verified blocker remains after the third fix attempt, stop for user resolution.
 
 ## Final approval gate
 

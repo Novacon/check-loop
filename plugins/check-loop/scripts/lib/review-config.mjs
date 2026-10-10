@@ -13,7 +13,7 @@ function hasOwn(value, key) {
   return Object.prototype.hasOwnProperty.call(value, key);
 }
 
-function userConfigRoot(env) {
+export function userConfigRoot(env = process.env) {
   const configuredRoot = env.CLAUDE_CONFIG_DIR;
   return configuredRoot
     ? path.resolve(configuredRoot)

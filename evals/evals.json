@@ -14,29 +14,27 @@
     },
     {
       "id": 2,
-      "prompt": "Before plan review, `config --cwd` returns {\"model\":null,\"effort\":\"high\",\"maxRounds\":2}. Setup reports ready and explicitly says model availability is checked when review starts. Round 1 returns model `reviewer-model`, effort `high`, and an unresolved verified blocker. Round 2 still has that verified blocker when the limit is reached. Explain which settings are frozen, what is passed to the continuation, what is displayed for each round, and the final status.",
-      "expected_output": "The workflow freezes the two-round budget and configured defaults before review, uses `default` for the initial null model, records the first turn's actual `reviewer-model` and `high` effort, passes those values explicitly with the same thread on continuation, and reports Round N/2 with actual model and effort. Because a verified blocker remains after Round 2, it stops blocked rather than approved. Setup is not treated as proof of model availability.",
+      "prompt": "Plan review runs with a configured limit of 2 rounds. Round 1 returns reviewer model `reviewer-model`, effort `high`, and verified blocker F1, which Fable accepts and fixes. Round 2 reports F1 NOT_ADDRESSED; Fable accepts it again and edits the plan. Describe the next `round` call's result, what Fable shows the user, and the final status options.",
+      "expected_output": "The runner froze the 2-round limit and reviewer settings at round 1 and reused the same thread with the actual model and effort. After the second fix, the next `round` call does not spend a reviewer turn: it returns `next: cap` with outcome `FIXES APPLIED — UNCONFIRMED`. Fable shows the summary and asks the user to choose between one closeout round, accepting as is, or stopping. It never reports approval and never starts a `--new` run to bypass the limit.",
       "files": [],
       "assertions": [
-        "Freezes model, effort, and maxRounds before the first review",
-        "Treats null model as Codex default until the first turn reports the actual model",
-        "Uses the same thread and explicit actual model and effort on continuation",
-        "Reports each round as N/2 with actual model and effort",
-        "Stops blocked, not approved, when a verified blocker remains at the cap",
-        "Does not claim setup proved model availability"
+        "Relies on the runner's frozen limit and reviewer settings rather than re-resolving them",
+        "Recognizes that the capped call spends no reviewer turn",
+        "Reports FIXES APPLIED — UNCONFIRMED, not approved",
+        "Offers closeout, accept as is, or stop as named options",
+        "Does not start a new run to get around the limit"
       ]
     },
     {
       "id": 3,
-      "prompt": "A plan review must continue because Round 1 left an independently verified blocker. Write the substantive review-focus instructions for Round 2 and, if a blocker still requires Round 3, for Round 3. State whether a clean Round 1 should continue merely to reach the later perspectives.",
-      "expected_output": "Round 2 keeps every applicable architecture/correctness, security/data-integrity, operations/recovery, scope, evidence, edge-case, and simplicity check mandatory while adding concrete security and data-integrity focus such as authorization, validation, concurrency, idempotency, partial failure, secrets, auditability, and data loss. Round 3 keeps those core checks while adding concrete operations and recovery focus such as rollback, observability, rollout safety, version skew, compatibility, capacity, blast radius, and recovery. A clean review exits early rather than forcing perspective rounds.",
+      "prompt": "Round 2 of a plan review returns: F1 ADDRESSED, plus a new VERIFIED critical finding with origin `new` about a part of the plan that did not change, and a VERIFIED important finding with origin `regression` that cites a line Fable added in the fix. What blocks, what happens to the other finding, and should Fable send the whole plan again?",
+      "expected_output": "Only the regression finding is a blocker, because closure rounds block only on regressions in the diff or a missed VERIFIED critical defect marked `missed`. The `new` finding about unchanged text is recorded as a nonblocking note and stays visible in the report. Fable adjudicates the regression with evidence, makes the smallest fix, and calls `round` again; the runner sends only the diff and the open ledger, never the whole plan.",
       "files": [],
       "assertions": [
-        "Makes the Round 2 security and data-integrity perspective part of the actual prompt",
-        "Makes the Round 3 operations and recovery perspective part of the actual prompt",
-        "Keeps all applicable core risks mandatory in every round",
-        "Treats rotation as an additional focus rather than permission to skip risks",
-        "Does not force more rounds after no independently verified blocker remains"
+        "Treats the regression finding as the only blocker",
+        "Keeps the out-of-scope finding as a visible nonblocking note",
+        "Verifies the regression's evidence before fixing",
+        "Does not resend the whole plan"
       ]
     }
   ]

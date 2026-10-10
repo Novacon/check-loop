@@ -55,11 +55,11 @@ Require zero exit status and a valid nonempty review response before adjudicatio
 
 ### `check-loop`
 
-Fable owns the plan and debates the configured Codex reviewer in one persistent thread. Freeze the configured round cap at startup and actual reviewer settings after the first turn. Rotate additional focus from architecture/correctness to security/data integrity to operations/recovery, while checking every applicable core risk in every round. Fable independently checks evidence before editing. Stop early when no verified blocker remains; unresolved verified blockers at the cap require user input, never forced approval.
+Fable owns the plan; the configured Codex reviewer critiques it in one persistent thread through `codex-invoke.mjs round`. The runner (`scripts/lib/review-loop.mjs`) owns prompts, structured reviewer output (`REVIEW_OUTPUT_SCHEMA`), secret redaction, finding IDs, the decision ledger, repeat suppression, the one-time dispute budget, stall detection, the frozen round cap, the regression-only closeout, and resumable run state under `~/.claude/check-loop/runs/`. Round 1 is the only broad review and carries the full plan; later rounds carry the diff since the last review and block only on regressions or a missed VERIFIED critical defect. Fable independently checks evidence, records ACCEPT/REJECT/COUNTER/WAIVE, and edits minimally. Never bypass the cap with a new run; stalled or capped runs require a named user choice and are never reported as approved.
 
 ### `research`
 
-Fable researches the user's question and writes one Markdown report with current primary-source citations, explicit inferences, counterevidence, and unresolved gaps. Codex reviews the draft in one persistent thread within the frozen configured round cap. Fable independently checks every source before revising. The skill produces no code or implementation plan.
+Fable researches the user's question and writes one Markdown report with current primary-source citations, explicit inferences, counterevidence, and unresolved gaps. Codex reviews the draft through the same `round` runner (`--kind research`, findings `R1`...). Fable independently checks every source before revising. The skill produces no code or implementation plan.
 
 ### `execute`
 
@@ -81,11 +81,14 @@ Inspect or update model, effort, and maximum plan/research rounds through the co
 ## Transport
 
 ```bash
-# New review thread
-node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn --cwd /path --prompt "text"
+# Plan or research review round (first call needs --kind and --request-file)
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" round --cwd /path --artifact PLAN [--kind plan|research] [--request-file F] [--adjudication-file F] [--new] [--closeout]
 
-# Continue a review thread
-node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn --cwd /path --thread-id ID --prompt "text"
+# Compact summary of a review run
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" report --cwd /path --artifact PLAN
+
+# Free-form review turn (execution); --thread-id continues a thread
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn --cwd /path --prompt-file FILE [--thread-id ID]
 
 # Optional native review of a scope confirmed to contain no protected content
 node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" review --cwd /path [--scope auto|working-tree|branch] [--base REF]
@@ -102,7 +105,7 @@ The transport uses JSON-RPC over the Codex App Server protocol, broker reuse wit
 ## Validation
 
 ```bash
-node --test tests/orchestration-contract.test.mjs
+node --test tests/
 claude plugin validate ./plugins/check-loop
 claude plugin validate ./.claude-plugin/marketplace.json
 ```
@@ -117,4 +120,4 @@ Keep these values synchronized:
 2. `.claude-plugin/marketplace.json` → `plugins[0].version`
 3. `plugins/check-loop/plugin.json` → `version`
 
-Current version: **4.1.0**
+Current version: **5.0.0**

@@ -6,7 +6,7 @@ Fable runs the workflow and checks the review findings. Opus implements each ste
 
 A review finding needs evidence before it can block progress. Fable checks the cited source instead of accepting a concern just because another model raised it.
 
-Current version: 4.1.0.
+Current version: 5.0.0.
 
 ## Install
 
@@ -47,11 +47,14 @@ Restart Claude Code if the update requests it. Your reviewer settings live outsi
 
 ```text
 /check-loop path/to/plan.md
+/check-loop --quick path/to/plan.md
 ```
 
-Fable reads the plan and relevant repository files, then sends the plan to Codex. It checks each finding, revises the plan where the evidence supports a change, and asks Codex to review again.
+Fable reads the plan and relevant repository files, then sends the plan to Codex. The first round is the one broad review. Fable checks each finding, fixes the plan where the evidence supports a change, and later rounds only confirm those fixes and check the changed text. They don't reopen parts of the plan that didn't change.
 
-The loop stops when no verified blocking concern remains. It runs for up to six rounds by default. If a blocker remains at the limit, it stops and asks you what to do. The result includes the changes, rejected findings, unresolved questions, and a diff of the plan.
+You see one line per round. The loop stops when no verified blocking concern remains, after up to six rounds by default. `--quick` runs a single review pass. If the same blockers keep coming back, or the limit is reached with fixes Codex hasn't confirmed yet, Fable asks you what to do: keep fixing, waive the named risks, run one confirmation round, or stop. The result lists what changed, what Fable rejected and why, and any open questions.
+
+An interrupted review resumes where it stopped the next time you run the command on the same plan.
 
 ### Research a question
 
@@ -97,7 +100,7 @@ You can change the Codex model, reasoning effort, and plan or research round lim
 
 Ask for user-wide settings or project-only settings. These choices affect Codex, not Fable or Opus. The round limit applies to plans and research. It does not change execution's three-fix limit.
 
-Each plan or research run keeps the round limit it started with. Reviews stop early when no verified blocker remains. Later rounds add emphasis on security, data integrity, and recovery without skipping other relevant risks.
+Each plan or research run keeps the round limit and reviewer it started with. Reviews stop early when no verified blocker remains.
 
 ### Settings files and CLI
 
@@ -140,7 +143,9 @@ Codex must cite a plan passage, source file, command result, or research source 
 
 Only verified critical or important findings can block progress. Fable checks the citation and records whether it accepts, rejects, or counters the finding. Minor findings, inferences, and unanswered questions remain in the report without blocking the work.
 
-The reviewer runs in a read-only sandbox. The workflows require secret filtering before sending prompts or diffs to Codex. A failed, empty, or malformed response stops the workflow. It does not count as approval.
+After the first round, a new finding can block only if the revision introduced it or it is a verified critical defect the first round missed. A rejected finding can be disputed once, with new evidence. Repeats of findings that are already decided are dropped.
+
+The reviewer runs in a read-only sandbox. Credential-shaped values are redacted from every payload and from saved run state. A failed, empty, malformed, or timed-out response (20 minutes by default) is retried once and then stops the workflow. It never counts as approval.
 
 ## Check your setup
 
@@ -166,33 +171,54 @@ The skills live in `plugins/check-loop/skills/`. `scripts/codex-invoke.mjs` hand
 ### Call the reviewer directly
 
 ```bash
-# Start a review thread.
-node plugins/check-loop/scripts/codex-invoke.mjs turn \
-  --cwd "$(pwd)" --prompt "Review this plan: ..."
+# Run one plan review round. The first call needs the original request.
+node plugins/check-loop/scripts/codex-invoke.mjs round \
+  --cwd "$(pwd)" --kind plan --artifact plan.md --request-file request.md
 
-# Continue the same thread.
+# After editing the plan, record decisions and run the next round.
+node plugins/check-loop/scripts/codex-invoke.mjs round \
+  --cwd "$(pwd)" --artifact plan.md --adjudication-file decisions.json
+
+# Summarize a review.
+node plugins/check-loop/scripts/codex-invoke.mjs report --cwd "$(pwd)" --artifact plan.md
+
+# Free-form turns, used by execution.
 node plugins/check-loop/scripts/codex-invoke.mjs turn \
-  --cwd "$(pwd)" --thread-id THREAD_ID --prompt "Review the revised plan: ..."
+  --cwd "$(pwd)" --prompt-file prompt.md [--thread-id THREAD_ID]
 ```
 
-Results include `threadId`, `response`, `model`, `effort`, `status`, and `error`. A status of `0` means the call succeeded, not that the reviewer approved the work. A status of `1` signals a failure.
+`round` prints the next action (`adjudicate`, `stalled`, `cap`, `done`, or `retry`), the blocking findings, and a one-line summary. Run state lives in `~/.claude/check-loop/runs/`. `turn` results include `threadId`, `response`, `model`, `effort`, `status`, and `error`. A status of `0` means the call succeeded, not that the reviewer approved the work.
 
-Successful turns report their effective model and effort. The skills retain those settings for later rounds. Native review can use a separate Codex `review_model`. If you did not request a model explicitly, native review reports `model: null` rather than guessing which model ran.
+Successful turns report their effective model and effort, and later rounds reuse them. Native review can use a separate Codex `review_model`. If you did not request a model explicitly, native review reports `model: null` rather than guessing which model ran.
 
 ### Run the checks
 
 ```bash
-node --test tests/orchestration-contract.test.mjs
+node --test tests/
 claude plugin validate ./plugins/check-loop
 claude plugin validate ./.claude-plugin/marketplace.json
 ```
 
-The tests cover settings precedence, persistence, invalid configuration, reviewer setting mismatches, and failed or empty responses. They do not need model access. For a live check, use an authenticated Codex CLI and a disposable repository to exercise a new turn, a resumed turn, and native review.
+The tests cover settings precedence, invalid configuration, reviewer setting mismatches, failed or empty responses, and the review loop's rules: diff-only later rounds, closure gating, repeat suppression, one-time disputes, stall detection, the round limit and closeout, retries, and secret redaction. They do not need model access. For a live check, use an authenticated Codex CLI and a disposable repository.
+
+## Changes in 5.0.0
+
+Reviews were slow and kept finding new problems in text the loop itself had just added. This release changes how rounds work, using ideas from other review tools:
+
+- **Later rounds only check the fixes.** Round 1 is the full review. Later rounds confirm each fix and report only regressions in the changed text or a missed critical defect, following the fix re-review in [Superpowers](https://github.com/obra/superpowers/blob/main/skills/subagent-driven-development/re-review-prompt.md). The rotating focus areas from 4.1 are gone, because they reopened text that hadn't changed.
+- **Diffs instead of the whole plan.** The full plan or report is sent once; later rounds send only the diff since the last review.
+- **The loop runs in code.** A new `round` command builds prompts, requests structured findings, numbers them, keeps the decision ledger, and decides when to stop. Stalls (the same blockers twice, or a fixed finding coming back) are detected the way [Plan Tango](https://github.com/egsok/plan-tango) does. Repeats are dropped, and a rejection can be disputed once, as in [Comfy's review ledger](https://github.com/Comfy-Org/github-workflows/tree/main/.github/cursor-review).
+- **No cliff at the round limit.** If the limit is reached with unconfirmed fixes, you can run one confirmation-only round instead of starting over.
+- **Resume.** Run state is saved after each round, so an interrupted review continues where it stopped.
+- **Less noise.** One line per round and a short final report, with the full ledger in a file, as in [PGHQ second-opinion](https://github.com/PGHQdev/second-opinion).
+- **`--quick`** runs a single review pass.
+- **Execution** fix re-reviews send only the fix and the findings being fixed.
+- **Reliability.** Reviewer turns time out and are interrupted after 20 minutes, `turn` accepts `--prompt-file`, and credential-shaped values are redacted automatically.
 
 ## Changes in 4.1.0
 
 - Choose the reviewer model and effort, or inherit your Codex settings. Astra is no longer required.
-- Set the plan and research round limit. Later rounds check additional risks, with the review rotation inspired by [Claudex](https://github.com/promptadvisers/claudex). Check-loop keeps its independent evidence checks and read-only reviewer.
+- Set the plan and research round limit. Later rounds checked additional risks, with the review rotation inspired by [Claudex](https://github.com/promptadvisers/claudex) (replaced in 5.0.0).
 - Treat missing or failed reviews as errors. The response handling draws on the [official Codex plugin's guidance](https://github.com/openai/codex-plugin-cc/blob/main/plugins/codex/skills/codex-result-handling/SKILL.md).
 - Fix ignored reviewer flags, missing effort on the initial thread, and truncated prompts containing `=`.
 

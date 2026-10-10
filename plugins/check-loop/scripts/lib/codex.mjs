@@ -620,7 +620,39 @@ async function captureTurn(client, threadId, startRequest, options = {}) {
     applyTurnNotification(state, message);
   });
 
-  try {
+  // A reviewer turn that never completes must not hang the workflow. On expiry,
+  // interrupt the server-side turn and report a failure, never a verdict.
+  let deadline = null;
+  const timedOut = options.timeoutMs > 0
+    ? new Promise((resolve) => {
+        deadline = setTimeout(async () => {
+          if (state.completed) {
+            return;
+          }
+          state.error = new Error(
+            `Reviewer turn timed out after ${formatDuration(options.timeoutMs)} and was interrupted. This is an incomplete review, not approval.`
+          );
+          emitProgress(state.onProgress, state.error.message, "failed");
+          // Wait (briefly) for the server to acknowledge the interrupt so the
+          // reviewer's running commands stop before the connection closes.
+          if (state.turnId) {
+            let grace = null;
+            await Promise.race([
+              client.request("turn/interrupt", { threadId: state.threadId, turnId: state.turnId }).catch(() => {}),
+              new Promise((done) => {
+                grace = setTimeout(done, 5_000);
+              }),
+            ]);
+            clearTimeout(grace);
+          }
+          completeTurn(state, { id: state.turnId ?? "timed-out-turn", status: "interrupted" });
+          resolve(state);
+        }, options.timeoutMs);
+        deadline.unref?.();
+      })
+    : null;
+
+  const run = (async () => {
     const response = await startRequest();
     options.onResponse?.(response, state);
     state.turnId = response.turn?.id ?? null;
@@ -643,10 +675,24 @@ async function captureTurn(client, threadId, startRequest, options = {}) {
     }
 
     return await state.completion;
+  })();
+
+  try {
+    if (!timedOut) {
+      return await run;
+    }
+    run.catch(() => {});
+    return await Promise.race([run, timedOut]);
   } finally {
+    clearTimeout(deadline);
     clearCompletionTimer(state);
     client.setNotificationHandler(previousHandler ?? null);
   }
+}
+
+function formatDuration(ms) {
+  const seconds = Math.round(ms / 1000);
+  return seconds >= 60 && seconds % 60 === 0 ? `${seconds / 60} minute(s)` : `${seconds} second(s)`;
 }
 
 async function withAppServer(cwd, fn) {
@@ -859,6 +905,7 @@ export async function runAppServerReview(cwd, options = {}) {
       {
         onProgress: options.onProgress,
         expectedModel: reviewModel,
+        timeoutMs: options.timeoutMs ?? 0,
         onResponse(response, state) {
           if (response.reviewThreadId) {
             state.threadIds.add(response.reviewThreadId);
@@ -939,7 +986,7 @@ export async function runAppServerTurn(cwd, options = {}) {
           effort: effective.effort,
           outputSchema: options.outputSchema ?? null
         }),
-      { onProgress: options.onProgress, expectedModel: effective.model }
+      { onProgress: options.onProgress, expectedModel: effective.model, timeoutMs: options.timeoutMs ?? 0 }
     );
 
     return {

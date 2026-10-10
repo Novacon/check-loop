@@ -3,22 +3,24 @@ name: research
 description: Researches questions when they need current sources, explicit uncertainty, adversarial fact-checking, or evidence-backed consensus in a Markdown deliverable.
 model: fable
 effort: xhigh
-argument-hint: [research-question]
+argument-hint: [--quick] [research-question]
 ---
 
 # Fable-Codex research
 
 ## Overview
 
-Fable performs the requested research, writes the report, and owns every conclusion. The configured Codex reviewer peer-reviews the completed draft in one persistent read-only thread. Fable and Codex then challenge claims and corrections until no verified blocking concern remains.
+Fable performs the requested research, writes the report, and owns every conclusion. The configured Codex reviewer peer-reviews the completed draft in one persistent read-only thread. `codex-invoke.mjs round` runs the loop mechanics (prompts, secret redaction, diffs, finding IDs, ledger, repeat suppression, stall detection, round limit, resumable state). Fable checks sources, decides, and revises.
 
 **Core principle:** No evidence, no blocking finding. Model agreement is not research evidence.
+
+**Shape of a run:** round 1 is the one broad fact-check. Later rounds only confirm Fable's corrections and check the changed text. A later round can raise a new blocker only for an error introduced by the revision or a VERIFIED critical error round 1 missed.
 
 Produce one final Markdown report. Do not implement code, create an implementation plan, or dispatch implementation subagents.
 
 ## Input and output
 
-Treat `$ARGUMENTS` as the research question, scope, constraints, and optional output path. If empty, use the research request active in the conversation. Ask only when missing scope would materially change the answer.
+Treat `$ARGUMENTS` as the research question, scope, constraints, optional output path, and an optional `--quick` flag (one review pass: add `--max-rounds 1` to the first `round` call). If empty, use the research request active in the conversation. Ask only when missing scope would materially change the answer.
 
 Choose the Markdown path in this order:
 
@@ -28,35 +30,15 @@ Choose the Markdown path in this order:
 
 Keep working notes in context rather than producing sidecar deliverables. The final Markdown file is the source of truth.
 
-## Reviewer configuration and preflight
+## Preflight
 
-This skill's frontmatter selects Fable at `xhigh`. Stop if Claude Code reports that `fable` was rejected, unavailable, or replaced. Reviewer settings do not change Fable's role.
-
-Before research review starts, resolve settings for the current working directory:
+This skill's frontmatter selects Fable at `xhigh`. Stop if Claude Code reports that `fable` was rejected, unavailable, or replaced.
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" config --cwd "$(pwd)"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" setup --cwd "$(pwd)"
 ```
 
-The command prints one JSON object such as:
-
-```json
-{"model":null,"effort":null,"maxRounds":6}
-```
-
-`null` means inherit the corresponding Codex default. Freeze the resolved model, effort, and `maxRounds` for this invocation; do not re-resolve them between rounds. The resolved limit must be between 1 and 40. Use literal `default` for a null model or effort in CLI calls.
-
-Run:
-
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" setup \
-  --cwd "$(pwd)" \
-  --model "MODEL_SETTING_OR_default" \
-  --effort "EFFORT_SETTING_OR_default" \
-  --max-rounds MAX_ROUNDS
-```
-
-Proceed only when setup reports the Codex CLI installed, authentication ready, and the chosen settings and limit correctly. Setup does not test model availability; the first review turn does. Stop if an explicit override is unavailable, rejected, or silently substituted. All reviewer turns use the transport's enforced read-only sandbox.
+Proceed only when setup reports `Status: ready`. The first round freezes the reviewer model, effort, and round limit for the run.
 
 ## Phase 1: Fable researches and drafts
 
@@ -100,171 +82,68 @@ Every material factual claim must be traceable to a source. Label inference as i
 
 ## Phase 2: Codex peer review
 
-Start one thread after the complete first draft exists:
+If `report --artifact REPORT_PATH` shows `AWAITING ADJUDICATION`, resume that run instead of starting a new one. Otherwise write the research request to a temporary file and start:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn \
-  --cwd "$(pwd)" \
-  --model "MODEL_SETTING_OR_default" \
-  --effort "EFFORT_SETTING_OR_default" \
-  --prompt "PROMPT"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" round \
+  --cwd "$(pwd)" --kind research --artifact REPORT_PATH \
+  --request-file REQUEST_FILE [--new] [--max-rounds 1]
 ```
 
-The command prints:
+Add `--new` only when a finished run for this report exists. Do not put protected content (`*.env*`, `*.secret*`, `*credentials*`, `**/secrets/**`) in the request or report; the runner also redacts credential-shaped values.
 
-```json
-{"threadId":"...","response":"...","model":"...","effort":"...","status":0,"error":null}
-```
+The command prints one JSON object with `status`, `next`, `summary`, `blockers`, `notes`, `questions`, `reviewer`, and `runFile`. Show the user only the `summary` line per round. Findings are numbered `R1`, `R2`, ...
 
-Before adjudicating any round, require a zero command exit, `status: 0`, `error: null`, and a substantive response following the requested finding or approval format. Failure, empty output, malformed output, or authentication errors mean incomplete review, not "no findings." Preserve the report, show the actionable error, and stop without inventing a Codex verdict. Preserve the reviewer's exact citations and uncertainty labels; record Fable's adjudication separately.
+| `next` | Action |
+|---|---|
+| `adjudicate` / `adjudicate-final` | Adjudicate every blocker, revise, continue. After `adjudicate-final`, revisions are unreviewed unless the user approves a closeout. |
+| `stalled` | Ask the user: *Keep fixing*, *Waive these risks*, or *Stop here*. Ask the same when a verified blocker cannot be corrected; *Stop here* ends as `BLOCKED — NOT APPROVED`. |
+| `cap` | Ask the user: *Run one closeout round* (`--closeout`), *Accept as is*, or *Stop here*. |
+| `done` | Finish. |
+| `retry` | Nothing was recorded. Rerun the identical command once; stop with the error if it fails again. |
 
-Record the returned model and effort as the actual reviewer settings and show them with every round. Save the `threadId`. For every later round, pass the same explicit actual values when non-null. If a returned value is null, use literal `default` and report `Codex default (not reported)` rather than inventing a value:
-
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn \
-  --cwd "$(pwd)" \
-  --thread-id THREAD_ID \
-  --model "ACTUAL_MODEL_OR_default" \
-  --effort "ACTUAL_EFFORT_OR_default" \
-  --prompt "PROMPT"
-```
-
-A continuation that reports a different non-null model or effort is a configuration failure, not a valid review round.
-
-Before sending any research request, report, or follow-up to Codex, inspect it and redact secret or credential values. Omit contents from `*.env*`, `*.secret*`, `*credentials*`, `**/secrets/**`, ignored environment files, binary payloads, and dependency caches. Name an omitted path only when Codex needs the omission context; never include its content.
-
-### Initial Codex prompt
-
-```text
-Act as Codex, the adversarial peer reviewer for research owned by Fable.
-
-This is Round 1 of MAX_ROUNDS.
-Configured reviewer setting: model MODEL_SETTING_OR_DEFAULT; effort EFFORT_SETTING_OR_DEFAULT.
-
-Review only. Do not implement code or turn the report into an implementation plan. In every round, check all applicable research-specific criteria:
-- factual accuracy and whether citations support the exact claims;
-- primary-source quality, currency, and relevance;
-- missing material counterevidence or perspectives;
-- internal consistency and reasoning gaps;
-- conclusions that are stronger than the evidence;
-- important unresolved questions hidden by confident wording.
-
-Do not invent sources, quotations, repository facts, or browsing results. If you cannot open or confirm a source, mark the finding UNVERIFIED.
-
-Evidence contract for every concern:
-R1 [critical | important | minor] [VERIFIED | INFERENCE | UNVERIFIED]
-Claim:
-Evidence: exact report quote plus primary-source URL, file:line, or observed command output
-Source check:
-Impact on conclusion:
-Recommended correction:
-
-Status rules:
-- VERIFIED: the cited source directly supports the review finding.
-- INFERENCE: checked facts support a conclusion that has not been directly established.
-- UNVERIFIED: required evidence is missing or inaccessible.
-- Only VERIFIED critical or important findings may block.
-- Model agreement, confidence, severity, and repetition are not evidence.
-- Number findings continuously across rounds.
-
-If no verified critical or important concern remains, respond exactly:
-RESEARCH APPROVED -- No verified blocking findings.
-
-Research request:
-<request>
-FULL_RESEARCH_REQUEST
-</request>
-
-Draft report:
-<report>
-FULL_MARKDOWN_REPORT
-</report>
-```
+A failed, timed-out, empty, or malformed reviewer turn is an incomplete review, never "no findings."
 
 ## Phase 3: Fable adjudicates and revises
 
-Fable must independently verify every cited review source before changing the report.
-
-For each finding:
+For each blocker:
 
 1. Open the cited report passage and source.
 2. Confirm the source exists, is current enough for the claim, and says what Codex claims it says.
 3. Check that the finding's impact follows from the evidence.
-4. Assign:
-   - `ACCEPT`: verified and the correction improves accuracy or completeness.
-   - `REJECT`: contradicted, unsupported, irrelevant to scope, or preference-only.
-   - `COUNTER`: verified concern, but a different correction states the evidence more accurately.
-5. Revise the report only for accepted or countered findings.
-6. Keep inferred and unverified items in uncertainties until evidence promotes them.
-7. Recording a neutral evidence gap is not acceptance; do not alter the substantive conclusion for an inferred or unverified item.
+4. Decide `ACCEPT`, `REJECT`, `COUNTER` (verified concern, more accurate correction), or `WAIVE` (only when the user explicitly accepts the risk).
+5. Revise the report only for accepted or countered findings, and only as far as the evidence requires.
 
-Reject invented, stale, mismatched, or inaccessible citations. If the source identity is sufficient, check one obvious canonical or archived location; otherwise ask Codex for an accessible primary source and exact passage. Do not perform an unbounded source hunt.
+Blockers with a `priorDecision` are corrections the reviewer says did not land, or a one-time dispute of a rejection. Decide them again on the evidence.
 
-Continue the same thread only when another review round is required:
+Reject invented, stale, mismatched, or inaccessible citations. If the source identity is sufficient, check one obvious canonical or archived location; otherwise reject and say what evidence would change the decision. Do not perform an unbounded source hunt. Keep notes (minor, INFERENCE, UNVERIFIED) in uncertainties until evidence promotes them; recording a neutral evidence gap is not acceptance.
 
-```text
-Fable independently checked every cited source.
+Continue with the decisions file:
 
-This is Round N of MAX_ROUNDS.
-Frozen reviewer: model ACTUAL_MODEL_OR_DEFAULT; effort ACTUAL_EFFORT_OR_DEFAULT.
-
-Re-check every applicable research-specific criterion from the initial prompt; later rounds do not narrow the review.
-
-Adjudication:
-- R1: ACCEPTED -- verified source and reason
-- R2: REJECTED -- contradictory or missing evidence and reason
-- R3: COUNTERED -- verified concern, more accurate correction and reason
-
-Unverified questions:
-- Every INFERENCE or UNVERIFIED item still needing evidence
-
-Revised report:
-<report>
-FULL_REVISED_MARKDOWN_REPORT
-</report>
-
-Review the adjudication and revised report.
-- Do not repeat an addressed concern without new evidence.
-- Continue finding numbers for genuinely new concerns.
-- Use the complete evidence contract.
-- If Fable rejected evidence incorrectly, cite the exact source it missed.
-- If no verified critical or important concern remains, respond exactly:
-RESEARCH APPROVED -- No verified blocking findings.
+```json
+{"decisions":[{"id":"R1","decision":"ACCEPT","reason":"The 2026 release notes contradict the draft's date; corrected section 3."}]}
 ```
 
-## Convergence
-
-Count each completed Codex response as one review round. Conclude immediately when Codex approves or when no independently verified critical or important finding remains after adjudication. Codex withholding the approval phrase over a rejected, minor, inferred, or unverified concern does not block completion. Do not run another round merely to consume the budget, and never waive a verified blocker because the frozen limit was reached.
-
-Call the result `consensus` only when Codex emitted the approval phrase. Otherwise report `no verified blocking findings after adjudication`; never imply model agreement that did not occur.
-
-After each round, record:
-
-```text
-Round N/MAX_ROUNDS — Codex model: ACTUAL_MODEL; effort: ACTUAL_EFFORT
-Concerns: X
-- Accepted: R...
-- Rejected: R...
-- Countered: R...
-- Unverified questions: R...
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" round \
+  --cwd "$(pwd)" --artifact REPORT_PATH --adjudication-file DECISIONS_FILE
 ```
 
-Do not begin a round beyond the frozen `maxRounds`. At the cap, conclude only if no independently verified critical or important finding remains. Otherwise preserve the draft and adjudication record, mark research `BLOCKED AT ROUND LIMIT`, separate unresolved verified disagreements from unverified questions, and ask the user how to resolve the verified blocker. Never describe a capped result with blockers as approved.
+If every blocker is rejected or waived, the run converges without another reviewer turn.
 
-If the user cancels, stop the current invocation, leave the draft and review record in their present state, and report `CANCELLED — NOT APPROVED`. Cancellation creates no durable resume state and is not convergence.
+Call the result `consensus` only when the reviewer's last verdict was `approve`. Otherwise describe it as `no verified blocking findings after adjudication`; never imply model agreement that did not occur.
+
+If the user cancels, stop and report `CANCELLED — NOT APPROVED`. The run resumes on the next invocation for the same report.
 
 ## Final Markdown report
 
-Update the report's peer-review record with:
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" report --cwd "$(pwd)" --artifact REPORT_PATH
+```
 
-- Rounds completed and convergence status.
-- Frozen round limit and actual Codex model and effort.
-- Verified corrections incorporated.
-- Rejected and countered findings with concise reasons.
-- Unresolved verified disagreements.
-- Remaining inferences and unverified questions.
+Put a short peer-review record in the report: outcome, rounds, reviewer model and effort, corrections made, rejected findings with one-line reasons, and remaining uncertainties. The `report` output has all of these.
 
-Check every material citation one final time. Ensure the executive answer matches the evidence and uncertainty sections. Report the final Markdown path to the user and do not produce implementation changes.
+Check every material citation one final time. Ensure the executive answer matches the evidence and uncertainty sections. Give the user the final Markdown path and the `report` output, and do not produce implementation changes.
 
 ## Common mistakes
 
