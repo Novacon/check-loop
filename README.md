@@ -156,7 +156,7 @@ Only verified critical or important findings can block progress. The orchestrato
 
 After the first round, a new finding can block only if the revision introduced it or it is a verified critical defect the first round missed. Codex can dispute a rejected finding once, with new evidence. The runner drops repeats of findings that already have a decision.
 
-The reviewer runs in a read-only sandbox. The scripts redact credential-shaped values from every payload and from saved run state. Reviewer turns time out after 20 minutes by default. The scripts retry a failed, empty, malformed, or timed-out response once and then stop the workflow. Such a response never counts as approval.
+The reviewer runs in a read-only sandbox on your repository. The scripts redact credential-shaped values from every payload they send and from saved run state, and the step reviewer never receives diffs of `*.env*`, `*.secret*`, `*credentials*`, or `**/secrets/**` files. The reviewer can still open any file on disk, so keep secrets out of the checkout or in ignored paths. Reviewer turns time out after 20 minutes by default. The scripts retry a failed, empty, malformed, or timed-out response once and then stop the workflow. Such a response never counts as approval.
 
 ## Check your setup
 
