@@ -18,6 +18,7 @@ const RUN_VERSION = 1;
 export const KINDS = Object.freeze({
   plan: { noun: "implementation plan", tag: "plan", prefix: "F" },
   research: { noun: "research report", tag: "report", prefix: "R" },
+  step: { noun: "implementation step", tag: "diff", prefix: "S" },
 });
 export const DECISIONS = Object.freeze(["ACCEPT", "REJECT", "COUNTER", "WAIVE"]);
 const BLOCKING_SEVERITIES = new Set(["critical", "important"]);
@@ -440,14 +441,24 @@ function researchCriteria() {
   return `Check every applicable research criterion: factual accuracy and whether citations support the exact claims; primary-source quality, currency, and relevance; missing material counterevidence or perspectives; internal consistency and reasoning gaps; conclusions stronger than the evidence; important unresolved questions hidden by confident wording. Do not invent sources, quotations, or browsing results; if you cannot open a source, mark the finding UNVERIFIED. Report everything material now: later rounds only confirm corrections and check the changed text, so this is the one broad pass.`;
 }
 
-export function buildDiscoveryPrompt(run, artifactText) {
+function stepCriteria() {
+  return `Review the diff against the step contract: correctness, the contract's acceptance criteria, repository conventions and instructions, security and data integrity, and scope creep. Open the repository files for surrounding context; the diff is the only change under review. Do not open files matching *.env*, *.secret*, *credentials*, or **/secrets/**; changes to such paths are deliberately omitted. Use the observed validation output as evidence; do not assume checks passed that were not run. Report everything material now: later rounds only confirm fixes and check the fix delta.`;
+}
+
+const CRITERIA = { plan: planCriteria, research: researchCriteria, step: stepCriteria };
+
+function contextBlock(context) {
+  return context?.trim() ? `\nContext for this round:\n<context>\n${context.trim()}\n</context>\n` : "";
+}
+
+export function buildDiscoveryPrompt(run, artifactText, context = "") {
   const kind = KINDS[run.kind];
-  const criteria = run.kind === "plan" ? planCriteria() : researchCriteria();
+  const where = run.kind === "step" ? `Working tree: ${run.cwd}.` : `The ${kind.tag} file is ${run.artifact}.`;
   return `Act as Codex, the adversarial reviewer of a ${kind.noun} owned by the orchestrator. Review only; do not edit files or rewrite the ${kind.tag}.
 
 Round 1 of ${run.settings.maxRounds} (discovery).
 
-${criteria}
+${CRITERIA[run.kind]()}
 
 ${EVIDENCE_RULES}
 
@@ -455,13 +466,13 @@ Mark every finding origin "new" and reraise_of null.
 
 ${OUTPUT_RULES}
 
-The ${kind.tag} file is ${run.artifact}.
+${where}
 
 Original request:
 <request>
 ${run.request}
 </request>
-
+${contextBlock(context)}
 ${kind.tag[0].toUpperCase()}${kind.tag.slice(1)}:
 <${kind.tag}>
 ${artifactText}
@@ -472,7 +483,7 @@ function describeForConfirmation(finding) {
   return `- ${finding.id} [${finding.severity}] ${finding.title} (${finding.location}) — orchestrator: ${finding.decision}: ${finding.reason}`;
 }
 
-export function buildClosurePrompt(run, diffText, { round, closeout }) {
+export function buildClosurePrompt(run, diffText, { round, closeout, context = "" }) {
   const kind = KINDS[run.kind];
   const toConfirm = run.findings.filter((finding) => finding.status === "fixing");
   const rejected = run.findings.filter((finding) => finding.status === "rejected" && finding.disputes < DISPUTE_BUDGET);
@@ -501,8 +512,8 @@ ${settled.map((finding) => `- ${finding.id} ${finding.title}`).join("\n") || "- 
 ${EVIDENCE_RULES}
 
 ${OUTPUT_RULES}
-
-Changes since your last review of ${run.artifact} (read the file for surrounding context):
+${contextBlock(context)}
+Changes since your last review${run.kind === "step" ? "" : ` of ${run.artifact} (read the file for surrounding context)`}:
 <diff>
 ${diffText || "(no textual changes)"}
 </diff>`;
@@ -599,18 +610,37 @@ function result(run, fields, env, runFile) {
   };
 }
 
+/** The default source: a Markdown file. Snapshots are stored redacted; the hash tracks the raw text. */
+function fileSource(cwd, artifact) {
+  const file = path.resolve(cwd, artifact);
+  if (!fs.existsSync(file)) {
+    throw new Error(`Artifact not found: ${file}`);
+  }
+  const label = path.relative(cwd, file) || path.basename(file);
+  return {
+    key: file,
+    read() {
+      const text = fs.readFileSync(file, "utf8");
+      const redacted = redactSecrets(text);
+      return { hash: sha256(text), text: redacted.text, redactions: redacted.count };
+    },
+    delta(reviewed, current) {
+      return unifiedDiff(reviewed.text, current.text, label);
+    },
+  };
+}
+
 /**
  * Run one review step for an artifact. `transport(prompt, {threadId, model,
  * effort, outputSchema})` performs the reviewer turn and returns the
- * codex-invoke turn result shape.
+ * codex-invoke turn result shape. `source` supplies `{key, read(), delta()}`;
+ * it defaults to the artifact file.
  */
 export async function runReviewRound(options) {
   const env = options.env ?? process.env;
-  const artifact = path.resolve(options.cwd, options.artifact);
-  if (!fs.existsSync(artifact)) {
-    throw new Error(`Artifact not found: ${artifact}`);
-  }
-  const artifactText = fs.readFileSync(artifact, "utf8");
+  const source = options.source ?? fileSource(options.cwd, options.artifact);
+  const artifact = source.key;
+  const current = source.read();
   let run = options.newRun ? null : loadRun(artifact, env);
 
   if (run && run.outcome && !options.closeout) {
@@ -634,7 +664,7 @@ export async function runReviewRound(options) {
       cwd: options.cwd,
       request: redactSecrets(options.requestText.trim()).text,
       settings: { ...options.settings },
-      reviewer: { threadId: null, model: null, effort: null },
+      reviewer: { threadId: null, model: null, effort: null, ...options.reviewer },
       round: 0,
       closeoutUsed: false,
       nextNumber: 0,
@@ -662,7 +692,7 @@ export async function runReviewRound(options) {
     throw new Error("Nothing is awaiting adjudication.");
   }
 
-  const changed = run.reviewed !== null && sha256(artifactText) !== run.reviewed.hash;
+  const changed = run.reviewed !== null && current.hash !== run.reviewed.hash;
   const fixing = run.findings.filter((finding) => finding.status === "fixing");
 
   // 2. Decide whether another reviewer turn is needed at all.
@@ -702,10 +732,10 @@ export async function runReviewRound(options) {
   // 3. Build the payload. Round 1 sends the whole artifact once; later rounds
   // send only the diff since the last reviewed text plus the open ledger.
   const round = run.round + 1;
-  const label = path.relative(options.cwd, artifact) || path.basename(artifact);
+  const context = options.context ?? "";
   const prompt = round === 1
-    ? buildDiscoveryPrompt(run, artifactText)
-    : buildClosurePrompt(run, unifiedDiff(run.reviewed.text, redactSecrets(artifactText).text, label), { round, closeout: Boolean(options.closeout) });
+    ? buildDiscoveryPrompt(run, current.text, context)
+    : buildClosurePrompt(run, source.delta(run.reviewed, current), { round, closeout: Boolean(options.closeout), context });
   const redacted = redactSecrets(prompt);
 
   const turn = await options.transport(redacted.text, {
@@ -733,13 +763,12 @@ export async function runReviewRound(options) {
     model: turn.model ?? run.reviewer.model ?? null,
     effort: turn.effort ?? run.reviewer.effort ?? null,
   };
-  // Snapshots are stored redacted: the run file must not become a second copy
-  // of any credential the artifact contains. The hash tracks the raw text.
-  const snapshot = { hash: sha256(artifactText), text: redactSecrets(artifactText).text };
+  const redactions = redacted.count + (current.redactions ?? 0);
+  delete current.redactions;
   if (round === 1) {
-    run.original = snapshot;
+    run.original = current;
   }
-  run.reviewed = snapshot;
+  run.reviewed = current;
   run.round = round;
   if (options.closeout) {
     run.closeoutUsed = true;
@@ -779,7 +808,7 @@ export async function runReviewRound(options) {
     notes: summary.notes.map((id) => noteView(findById(run, id))),
     unconfirmed: summary.unconfirmed,
     questions: output.questions,
-    redactions: redacted.count,
+    redactions,
     stalled: summary.stalled,
   }, env, runFile);
 }
@@ -794,7 +823,7 @@ export function renderReport(run, env = process.env) {
   const lines = [];
   const status = run.outcome ?? (run.pending.length ? `AWAITING ADJUDICATION (${run.pending.join(", ")})` : "IN PROGRESS");
   lines.push(`**${status}** — ${run.round}/${run.settings.maxRounds} round(s)${run.closeoutUsed ? " + closeout" : ""}; reviewer ${run.reviewer.model ?? "Codex default"} / ${run.reviewer.effort ?? "Codex default"}.`);
-  if (run.original) {
+  if (run.original && run.kind !== "step") {
     const current = fs.existsSync(run.artifact) ? redactSecrets(fs.readFileSync(run.artifact, "utf8")).text : run.reviewed?.text ?? "";
     const { added, removed } = lineDelta(run.original.text, current);
     lines.push(`${path.basename(run.artifact)}: +${added} −${removed} lines since round 1.`);

@@ -63,14 +63,12 @@ The orchestrator researches the user's question and writes one Markdown report w
 
 ### `execute`
 
-1. The orchestrator locks the approved plan and records the working-tree state.
-2. Existing changes require worktree isolation or explicit user inclusion.
-3. A fresh subagent implements one bounded step without staging or committing.
-4. The orchestrator inspects the changes and runs repository-native validation.
-5. Codex reviews the step-scoped, secret-filtered diff and observed validation.
-6. The orchestrator independently verifies and adjudicates every finding.
-7. A fresh fixer handles only accepted or countered blocking findings.
-8. Final repository verification and a sanitized Codex review packet run before user approval.
+1. The orchestrator locks the approved plan; existing changes require worktree isolation or explicit user inclusion.
+2. `codex-invoke.mjs step --begin` records the step base as a git tree object (temporary index, nothing staged) before a fresh subagent implements one bounded step.
+3. The orchestrator inspects the changes and runs repository-native validation.
+4. `codex-invoke.mjs step` (`scripts/lib/step.mjs`) diffs base to current tree, excludes protected paths by git pathspec, redacts secrets, and runs the same ledger as `round` with kind `step`, findings `S1`..., one persistent thread per execution, and a fixed cap of one review plus three fix re-reviews.
+5. The orchestrator independently verifies and adjudicates; a fresh fixer handles only accepted or countered findings; re-reviews send only the fix delta.
+6. `--step final` reviews everything since the execution base before the user approval gate.
 
 Never hide, discard, stage, commit, or push existing user work automatically. Commit and push require explicit user approval.
 
@@ -87,7 +85,11 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" round --cwd /path --artifa
 # Compact summary of a review run
 node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" report --cwd /path --artifact PLAN
 
-# Free-form review turn (execution); --thread-id continues a thread
+# Execution step review: record the base before the implementer, then review the delta
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" step --cwd /path --plan PLAN --step N --begin
+node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" step --cwd /path --plan PLAN --step N|final [--contract-file F] [--validation-file F] [--adjudication-file F]
+
+# Free-form review turn; --thread-id continues a thread
 node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" turn --cwd /path --prompt-file FILE [--thread-id ID]
 
 # Optional native review of a scope confirmed to contain no protected content

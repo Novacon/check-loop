@@ -21,6 +21,7 @@ import {
 import { resolveReviewTarget } from "./lib/git.mjs";
 import { resolveReviewConfig, updateReviewConfig } from "./lib/review-config.mjs";
 import { loadRun, renderReport, runReviewRound } from "./lib/review-loop.mjs";
+import { beginStep, runStepRound } from "./lib/step.mjs";
 import { buildReviewResult } from "./lib/review-result.mjs";
 import { resolveWorkspaceRoot } from "./lib/workspace.mjs";
 
@@ -205,14 +206,78 @@ async function handleRound(argv) {
   }
 }
 
-function handleReport(argv) {
-  const options = parseCommandArgs(argv, { valueOptions: ["artifact", "cwd"] }, "report");
-  if (!options.artifact) {
-    throw new Error("Usage: node codex-invoke.mjs report --artifact <path> [--cwd <path>]");
+// ---------------------------------------------------------------------------
+// step -- review one execution step's working-tree delta
+// ---------------------------------------------------------------------------
+
+async function handleStep(argv) {
+  const options = parseCommandArgs(argv, {
+    valueOptions: ["plan", "step", "contract-file", "validation-file", "adjudication-file", "cwd", "timeout-minutes"],
+    booleanOptions: ["begin", "new", "new-step"],
+  }, "step");
+  if (!options.plan || !options.step) {
+    throw new Error(
+      "Usage: node codex-invoke.mjs step --plan <path> --step <N|final> (--begin | [--contract-file <path>] [--validation-file <path>] [--adjudication-file <path>] [--new-step]) [--new] [--timeout-minutes <n>] [--cwd <path>]"
+    );
   }
-  const run = loadRun(path.resolve(resolveCwd(options), options.artifact));
+  const cwd = resolveCwd(options);
+  const root = resolveWorkspaceRoot(cwd);
+  if (options.begin) {
+    const payload = beginStep({ cwd, root, plan: options.plan, step: options.step, newExecution: options.new === true, settings: resolveReviewConfig(cwd) });
+    process.stdout.write(`${JSON.stringify(payload)}\n`);
+    return;
+  }
+  const timeoutMs = parseTimeoutMs(options);
+  const readText = (key) => (options[key] ? fs.readFileSync(path.resolve(cwd, options[key]), "utf8") : undefined);
+
+  const payload = await runStepRound({
+    cwd,
+    root,
+    plan: options.plan,
+    step: options.step,
+    contractText: readText("contract-file"),
+    validationText: readText("validation-file"),
+    adjudication: options["adjudication-file"] ? readJsonFile(options["adjudication-file"], "adjudication file") : null,
+    newExecution: options.new === true,
+    newStep: options["new-step"] === true,
+    settings: resolveReviewConfig(cwd),
+    transport: async (prompt, turn) => {
+      const result = await runAppServerTurn(root, {
+        resumeThreadId: turn.threadId,
+        prompt,
+        model: turn.model,
+        effort: turn.effort,
+        outputSchema: turn.outputSchema,
+        sandbox: "read-only",
+        persistThread: true,
+        timeoutMs,
+        onProgress: writeProgress,
+      });
+      return buildReviewResult(result, result.finalMessage);
+    },
+  });
+
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+  if (payload.status !== 0) {
+    process.stderr.write(`[codex] ${payload.error}\n`);
+    process.exitCode = 1;
+  }
+}
+
+function handleReport(argv) {
+  const options = parseCommandArgs(argv, { valueOptions: ["artifact", "plan", "step", "cwd"] }, "report");
+  const cwd = resolveCwd(options);
+  let key;
+  if (options.plan && options.step) {
+    key = `${path.resolve(cwd, options.plan)}#step-${options.step}`;
+  } else if (options.artifact) {
+    key = path.resolve(cwd, options.artifact);
+  } else {
+    throw new Error("Usage: node codex-invoke.mjs report (--artifact <path> | --plan <path> --step <N|final>) [--cwd <path>]");
+  }
+  const run = loadRun(key);
   if (!run) {
-    throw new Error(`No check-loop review found for ${options.artifact}.`);
+    throw new Error(`No check-loop review found for ${options.artifact ?? `${options.plan} step ${options.step}`}.`);
   }
   process.stdout.write(`${renderReport(run)}\n`);
 }
@@ -328,7 +393,9 @@ async function main() {
       "Usage:",
       "  node codex-invoke.mjs config [--cwd <path>] [--project] [--model <id|default>] [--effort <level|default>] [--max-rounds <1..40>] [--implementer-model <id|default>]",
       "  node codex-invoke.mjs round --artifact <path> [--kind plan|research] [--request-file <path>] [--adjudication-file <path>] [--new] [--closeout] [--model <id|default>] [--effort <level|default>] [--max-rounds <1..40>] [--timeout-minutes <n>] [--cwd <path>]",
-      "  node codex-invoke.mjs report --artifact <path> [--cwd <path>]",
+      "  node codex-invoke.mjs step --plan <path> --step <N> --begin [--new] [--cwd <path>]",
+      "  node codex-invoke.mjs step --plan <path> --step <N|final> [--contract-file <path>] [--validation-file <path>] [--adjudication-file <path>] [--new-step] [--timeout-minutes <n>] [--cwd <path>]",
+      "  node codex-invoke.mjs report (--artifact <path> | --plan <path> --step <N|final>) [--cwd <path>]",
       "  node codex-invoke.mjs turn (--prompt <text> | --prompt-file <path|->) [--thread-id <id>] [--cwd <path>] [--model <id|default>] [--effort <level|default>] [--timeout-minutes <n>]",
       "  node codex-invoke.mjs review [--scope <auto|working-tree|branch>] [--base <ref>] [--cwd <path>] [--model <id|default>] [--effort <level|default>] [--timeout-minutes <n>]",
       "  node codex-invoke.mjs setup [--cwd <path>] [--model <id|default>] [--effort <level|default>] [--max-rounds <1..40>]",
@@ -347,6 +414,9 @@ async function main() {
     case "round":
       await handleRound(argv);
       break;
+    case "step":
+      await handleStep(argv);
+      break;
     case "report":
       handleReport(argv);
       break;
@@ -360,7 +430,7 @@ async function main() {
       handleSetup(argv);
       break;
     default:
-      throw new Error(`Unknown subcommand: ${subcommand}. Use: config, round, report, turn, review, setup`);
+      throw new Error(`Unknown subcommand: ${subcommand}. Use: config, round, step, report, turn, review, setup`);
   }
 }
 

@@ -190,15 +190,20 @@ node plugins/check-loop/scripts/codex-invoke.mjs round \
 node plugins/check-loop/scripts/codex-invoke.mjs round \
   --cwd "$(pwd)" --artifact plan.md --adjudication-file decisions.json
 
+# Execution: record a step base, implement, then review the delta.
+node plugins/check-loop/scripts/codex-invoke.mjs step --cwd "$(pwd)" --plan plan.md --step 1 --begin
+node plugins/check-loop/scripts/codex-invoke.mjs step --cwd "$(pwd)" --plan plan.md --step 1 \
+  --contract-file step1.md --validation-file validation.txt
+
 # Summarize a review.
 node plugins/check-loop/scripts/codex-invoke.mjs report --cwd "$(pwd)" --artifact plan.md
 
-# Free-form turns, used by execution.
+# Free-form turns on a persistent thread.
 node plugins/check-loop/scripts/codex-invoke.mjs turn \
   --cwd "$(pwd)" --prompt-file prompt.md [--thread-id THREAD_ID]
 ```
 
-`round` prints the blocking findings, a one-line summary, and the next action, which is one of `adjudicate`, `stalled`, `cap`, `done`, or `retry`. Run state lives in `~/.claude/check-loop/runs/`. `turn` results include `threadId`, `response`, `model`, `effort`, `status`, and `error`. A status of `0` means the call succeeded, not that the reviewer approved the work.
+`round` and `step` print the blocking findings, a one-line summary, and the next action, which is one of `adjudicate`, `stalled`, `cap`, `done`, or `retry`. `step` also lists any changed protected paths it withheld from the reviewer. Run state lives in `~/.claude/check-loop/runs/`. `turn` results include `threadId`, `response`, `model`, `effort`, `status`, and `error`. A status of `0` means the call succeeded, not that the reviewer approved the work.
 
 Successful turns report their effective model and effort, and later rounds reuse them. Native review can use a separate Codex `review_model`. If you did not request a model explicitly, native review reports `model: null` rather than guessing which model ran.
 
