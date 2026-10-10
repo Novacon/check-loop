@@ -82,7 +82,7 @@ You get one Markdown report with sources, remaining questions, and a record of t
 /check-loop:execute path/to/plan.md
 ```
 
-The orchestrator records the approved plan and the repository's starting state. For each step, it gives a fresh subagent one bounded task, runs the project's checks, and sends the step's diff and check results to Codex.
+The orchestrator records the approved plan and the repository's starting state. Before each step it records the working tree as a git tree object, without staging anything. It then gives a fresh subagent one bounded task, runs the project's checks, and sends Codex the diff since that snapshot together with the check output.
 
 If the orchestrator verifies a blocking finding, a fresh subagent fixes it. Execution stops after three unsuccessful fix attempts on a step. At the end, the orchestrator runs the full checks and asks Codex for a final review before handing the work back to you.
 
@@ -156,7 +156,9 @@ Only verified critical or important findings can block progress. The orchestrato
 
 After the first round, a new finding can block only if the revision introduced it or it is a verified critical defect the first round missed. Codex can dispute a rejected finding once, with new evidence. The runner drops repeats of findings that already have a decision.
 
-The reviewer runs in a read-only sandbox on your repository. The scripts redact credential-shaped values from every payload they send and from saved run state, and the step reviewer never receives diffs of `*.env*`, `*.secret*`, `*credentials*`, or `**/secrets/**` files. The reviewer can still open any file on disk, so keep secrets out of the checkout or in ignored paths. Reviewer turns time out after 20 minutes by default. The scripts retry a failed, empty, malformed, or timed-out response once and then stop the workflow. Such a response never counts as approval.
+The reviewer runs in a read-only sandbox on your repository. The scripts redact credential-shaped values from every payload they send and from saved run state. Step reviews omit diffs of files matching `*.env*`, `*.secret*`, `*credentials*`, or `**/secrets/**`, and report which paths they withheld. The reviewer can still open any file on disk, so keep secrets out of the checkout or in ignored paths.
+
+Reviewer turns time out after 20 minutes by default. The scripts retry a failed, empty, malformed, or timed-out response once and then stop the workflow. Such a response never counts as approval.
 
 ## Check your setup
 
@@ -215,13 +217,13 @@ claude plugin validate ./plugins/check-loop
 claude plugin validate ./.claude-plugin/marketplace.json
 ```
 
-The tests cover settings precedence, invalid configuration, reviewer setting mismatches, failed or empty responses, and the review loop's rules: diff-only later rounds, closure gating, repeat suppression, one-time disputes, stall detection, the round limit and closeout, retries, and secret redaction. They do not need model access. For a live check, use an authenticated Codex CLI and a disposable repository.
+The tests cover settings precedence, invalid configuration, reviewer setting mismatches, failed or empty responses, and the review loop's rules: diff-only later rounds, closure gating, repeat suppression, one-time disputes, stall detection, the round limit and closeout, retries, and secret redaction. The step tests cover tree snapshots that skip ignored and protected files, step-scoped diffs, base chaining across steps, the three-fix cap, and a plan that changes mid-execution. None of them need model access. For a live check, use an authenticated Codex CLI and a disposable repository.
 
 ## Changes in 5.2.0
 
-- **Execution runs in code.** `codex-invoke.mjs step --begin` records a step base without staging; `step` diffs it, drops protected paths, redacts secrets, and runs the same ledger as plan review. The execute skill is a third of its old length.
-- **No more broker.** Each command spawns its own short-lived `codex app-server`. The old shared broker leaked a process pair per directory.
-- Removed unused upstream modules and duplicate CLI probes.
+- **Execution runs in code.** A new `step` command records each step's base without staging, diffs the working tree against it, drops protected paths, redacts secrets, and runs the same ledger as plan review. The execute skill is a third of its old length because it no longer describes those mechanics in prose.
+- **One app-server per command.** Each command spawns its own short-lived `codex app-server` and exits with it. The shared broker from earlier versions never exited and left a process pair running for every directory it was used in.
+- **Smaller scripts.** Removed modules inherited from the upstream Codex plugin that nothing called, and the duplicate CLI probes that ran before every command. The scripts went from about 4,900 lines to 1,900.
 
 ## Changes in 5.1.0
 
