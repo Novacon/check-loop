@@ -36,55 +36,7 @@ function hasOwn(value, key) {
   return Object.prototype.hasOwnProperty.call(value, key);
 }
 
-function parseCommandArgs(argv, config, command) {
-  const valueOptions = new Set(config.valueOptions ?? []);
-  const booleanOptions = new Set(config.booleanOptions ?? []);
-  const seen = new Set();
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-    if (token === "--") {
-      break;
-    }
-    if (!token.startsWith("-") || token === "-") {
-      continue;
-    }
-    if (!token.startsWith("--")) {
-      throw new Error(`Unknown ${command} option: ${token}.`);
-    }
-
-    const equalsIndex = token.indexOf("=");
-    const key = token.slice(2, equalsIndex === -1 ? undefined : equalsIndex);
-    if (!valueOptions.has(key) && !booleanOptions.has(key)) {
-      throw new Error(`Unknown ${command} option: --${key}.`);
-    }
-    if (seen.has(key)) {
-      throw new Error(`Duplicate ${command} option: --${key}.`);
-    }
-    seen.add(key);
-
-    if (booleanOptions.has(key)) {
-      if (equalsIndex !== -1) {
-        throw new Error(`Option --${key} does not take a value.`);
-      }
-      continue;
-    }
-
-    if (equalsIndex === -1) {
-      const next = argv[index + 1];
-      if (next === undefined || (next.startsWith("-") && next !== "-")) {
-        throw new Error(`Missing value for --${key}.`);
-      }
-      index += 1;
-    }
-  }
-
-  const { options, positionals } = parseArgs(argv, config);
-  if (positionals.length > 0) {
-    throw new Error(`Unexpected ${command} argument: ${positionals.map(JSON.stringify).join(", ")}.`);
-  }
-  return options;
-}
+const parseCommandArgs = parseArgs;
 
 function parseMaxRounds(value) {
   if (!/^\d+$/.test(value)) {
@@ -146,11 +98,8 @@ function readJsonFile(file, label) {
   }
 }
 
-function writeProgress(event) {
-  const msg = typeof event === "string" ? event : event?.message;
-  if (msg) {
-    process.stderr.write(`[codex] ${msg}\n`);
-  }
+function writeProgress(message) {
+  process.stderr.write(`[codex] ${message}\n`);
 }
 
 function writeCommandResult(result, response) {
@@ -281,19 +230,10 @@ async function handleReview(argv) {
   const workspaceRoot = resolveWorkspaceRoot(cwd);
   const config = resolveReviewConfig(cwd, reviewOverrides(options));
 
-  const target = resolveReviewTarget(cwd, {
-    base: options.base ?? null,
-    scope: options.scope ?? "auto",
-  });
-
-  let nativeTarget;
-  if (target.mode === "working-tree") {
-    nativeTarget = { type: "uncommittedChanges" };
-  } else if (target.mode === "branch") {
-    nativeTarget = { type: "baseBranch", branch: target.baseRef };
-  } else {
-    throw new Error(`Unsupported review target mode: ${target.mode}`);
-  }
+  const target = resolveReviewTarget(cwd, { base: options.base ?? null, scope: options.scope ?? "auto" });
+  const nativeTarget = target.mode === "working-tree"
+    ? { type: "uncommittedChanges" }
+    : { type: "baseBranch", branch: target.baseRef };
 
   const result = await runAppServerReview(workspaceRoot, {
     target: nativeTarget,
@@ -318,7 +258,7 @@ function handleSetup(argv) {
   const cwd = resolveCwd(options);
   const config = resolveReviewConfig(cwd, reviewOverrides(options, true));
   const codexStatus = getCodexAvailability(cwd);
-  const authStatus = getCodexLoginStatus(cwd);
+  const authStatus = codexStatus.available ? getCodexLoginStatus(cwd) : { loggedIn: false, detail: codexStatus.detail };
 
   const lines = [
     "# Codex Setup (check-loop)",

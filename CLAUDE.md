@@ -13,7 +13,6 @@ plugins/check-loop/
   plugin.json
   scripts/
     codex-invoke.mjs
-    app-server-broker.mjs
     lib/
   skills/
     check-loop/SKILL.md
@@ -101,7 +100,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" setup [--cwd /path]
 node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-invoke.mjs" config [--cwd /path]
 ```
 
-The transport uses JSON-RPC over the Codex App Server protocol, broker reuse with direct fallback, streaming notifications, and the local Codex OAuth session.
+The transport spawns `codex app-server` per command, speaks JSON-RPC over stdio, and uses the local Codex OAuth session. Threads persist on disk, so `--thread-id` resumes across processes.
 
 ## Validation
 

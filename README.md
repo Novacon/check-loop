@@ -177,7 +177,7 @@ claude --plugin-dir ./check-loop/plugins/check-loop
 
 When working in another project, pass the absolute path to the clone's `plugins/check-loop` directory. Keep the whole plugin directory together. The skills need the scripts alongside them.
 
-The skills live in `plugins/check-loop/skills/`. `scripts/codex-invoke.mjs` handles settings and talks to the Codex App Server over JSON-RPC. It reuses a broker connection and your local Codex login. The plugin has no runtime npm dependencies and needs no separate API key when you use Codex login.
+The skills live in `plugins/check-loop/skills/`. `scripts/codex-invoke.mjs` handles settings and talks to the Codex App Server over JSON-RPC. Each command starts its own short-lived `codex app-server` process and uses your local Codex login. The plugin has no runtime npm dependencies and needs no separate API key when you use Codex login.
 
 ### Call the reviewer directly
 

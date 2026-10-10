@@ -1,130 +1,38 @@
-export function parseArgs(argv, config = {}) {
-  const valueOptions = new Set(config.valueOptions ?? []);
-  const booleanOptions = new Set(config.booleanOptions ?? []);
-  const aliasMap = config.aliasMap ?? {};
+/** Strict `--key value` / `--key=value` / `--flag` parser. Unknown or malformed options throw. */
+export function parseArgs(argv, { valueOptions = [], booleanOptions = [] } = {}, command = "") {
+  const values = new Set(valueOptions);
+  const flags = new Set(booleanOptions);
   const options = {};
-  const positionals = [];
-  let passthrough = false;
+  const label = command ? `${command} ` : "";
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
-
-    if (passthrough) {
-      positionals.push(token);
-      continue;
+    if (!token.startsWith("--")) {
+      throw new Error(`Unexpected ${label}argument: ${JSON.stringify(token)}.`);
     }
-
-    if (token === "--") {
-      passthrough = true;
-      continue;
+    const equalsIndex = token.indexOf("=");
+    const key = token.slice(2, equalsIndex === -1 ? undefined : equalsIndex);
+    if (!values.has(key) && !flags.has(key)) {
+      throw new Error(`Unknown ${label}option: --${key}.`);
     }
-
-    if (!token.startsWith("-") || token === "-") {
-      positionals.push(token);
-      continue;
+    if (key in options) {
+      throw new Error(`Duplicate ${label}option: --${key}.`);
     }
-
-    if (token.startsWith("--")) {
-      const equalsIndex = token.indexOf("=");
-      const rawKey = token.slice(2, equalsIndex === -1 ? undefined : equalsIndex);
-      const inlineValue = equalsIndex === -1 ? undefined : token.slice(equalsIndex + 1);
-      const key = aliasMap[rawKey] ?? rawKey;
-
-      if (booleanOptions.has(key)) {
-        options[key] = inlineValue === undefined ? true : inlineValue !== "false";
-        continue;
-      }
-
-      if (valueOptions.has(key)) {
-        const nextValue = inlineValue ?? argv[index + 1];
-        if (nextValue === undefined) {
-          throw new Error(`Missing value for --${rawKey}`);
-        }
-        options[key] = nextValue;
-        if (inlineValue === undefined) {
-          index += 1;
-        }
-        continue;
-      }
-
-      positionals.push(token);
-      continue;
-    }
-
-    const shortKey = token.slice(1);
-    const key = aliasMap[shortKey] ?? shortKey;
-
-    if (booleanOptions.has(key)) {
+    if (flags.has(key)) {
+      if (equalsIndex !== -1) throw new Error(`Option --${key} does not take a value.`);
       options[key] = true;
       continue;
     }
-
-    if (valueOptions.has(key)) {
-      const nextValue = argv[index + 1];
-      if (nextValue === undefined) {
-        throw new Error(`Missing value for -${shortKey}`);
-      }
-      options[key] = nextValue;
-      index += 1;
+    if (equalsIndex !== -1) {
+      options[key] = token.slice(equalsIndex + 1);
       continue;
     }
-
-    positionals.push(token);
+    const next = argv[index + 1];
+    if (next === undefined || (next.startsWith("-") && next !== "-")) {
+      throw new Error(`Missing value for --${key}.`);
+    }
+    options[key] = next;
+    index += 1;
   }
-
-  return { options, positionals };
-}
-
-export function splitRawArgumentString(raw) {
-  const tokens = [];
-  let current = "";
-  let quote = null;
-  let escaping = false;
-
-  for (const character of raw) {
-    if (escaping) {
-      current += character;
-      escaping = false;
-      continue;
-    }
-
-    if (character === "\\") {
-      escaping = true;
-      continue;
-    }
-
-    if (quote) {
-      if (character === quote) {
-        quote = null;
-      } else {
-        current += character;
-      }
-      continue;
-    }
-
-    if (character === "'" || character === "\"") {
-      quote = character;
-      continue;
-    }
-
-    if (/\s/.test(character)) {
-      if (current) {
-        tokens.push(current);
-        current = "";
-      }
-      continue;
-    }
-
-    current += character;
-  }
-
-  if (escaping) {
-    current += "\\";
-  }
-
-  if (current) {
-    tokens.push(current);
-  }
-
-  return tokens;
+  return options;
 }
