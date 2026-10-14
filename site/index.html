@@ -174,34 +174,9 @@ main { position: relative; z-index: 1; }
   padding: calc(var(--block) + 52px) var(--inline);
 }
 .slide + .slide::before { content: ""; position: absolute; top: 0; left: var(--inline); right: var(--inline); height: 1px; background: linear-gradient(90deg, transparent, var(--line) 20%, var(--line) 80%, transparent); }
-/* Reversible entrances: the heading leads, panels follow, and the seam draws across. */
-.js .slide { --enter-y: 42px; }
-.js .slide .reveal {
-  opacity: 0; transform: translate3d(0, var(--enter-y), 0) scale(.985); filter: blur(3px);
-  transition: opacity .55s ease, transform .85s var(--ease), filter .65s ease;
-}
-.js .slide.visible .reveal { opacity: 1; transform: none; filter: none; }
-.js .slide .body.reveal { transition-delay: .12s; }
-.js .slide .head > * {
-  opacity: 0; transform: translate3d(0, 14px, 0);
-  transition: opacity .5s ease, transform .7s var(--ease);
-}
-.js .slide.visible .head > * { opacity: 1; transform: none; }
-.js .slide .head h2 { transition-delay: .06s; }
-.js .slide .head .lede { transition-delay: .14s; }
-.section-label::after {
-  content: ""; flex: 1; min-width: 40px; height: 2px; margin-left: 12px;
-  background: linear-gradient(90deg, var(--accent), var(--pink-hi) 35%, transparent);
-}
-.js .section-label::after {
-  transform: scaleX(0); opacity: 0; transform-origin: left;
-  transition: transform 1s var(--ease) .18s, opacity .35s ease .18s;
-}
-.js .slide.visible .section-label::after { transform: scaleX(1); opacity: 1; }
-@media (max-width: 820px) {
-  .js .slide { --enter-y: 24px; }
-  .js .slide .reveal { filter: none; }
-}
+.js .slide .reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s ease, transform .8s var(--ease); }
+.js .slide.visible .reveal { opacity: 1; transform: none; }
+.js .slide .reveal:nth-child(2) { transition-delay: .08s; }
 
 /* quick start, under the wordmark on the first slide; JS places it */
 .quick { position: absolute; left: 50%; transform: translateX(-50%); width: min(calc(100% - 2 * var(--inline)), 780px); }
@@ -428,8 +403,7 @@ td:nth-child(2) { color: var(--warm); }
   td:nth-child(3) { display: block; margin-top: 4px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .js .slide .reveal, .js .slide .head > * { opacity: 1; transform: none; filter: none; transition: none; }
-  .js .section-label::after { transform: none; opacity: 1; transition: none; }
+  .js .slide .reveal { opacity: 1; transform: none; transition: none; }
   .glitch, .logo { animation: none !important; }
   .logo-trace { display: none; }
   .term .caret { animation: none; }
@@ -442,25 +416,22 @@ td:nth-child(2) { color: var(--warm); }
 .term .b, .step .n { color: var(--accent-ink); }
 .qs-row .copy-btn:hover { color: var(--on-accent); }
 
-/* Match ohmyjev's scroll-driven overlap: move content, never its snap point.
-   Long slides keep normal scrolling so their last panels remain readable. */
+/* slide to slide, where scroll-driven animations exist (desktop only, like the snap): a leaving slide holds still,
+   shrinks and fades while the next one rides up over it, and content rises with the scroll, both ways. A slide
+   taller than the screen (.tall, set by site.js) scrolls normally so none of it is hidden. */
 @supports (animation-timeline: view()) {
   @media (min-width: 821px) and (prefers-reduced-motion: no-preference) {
     .slide.doc { view-timeline: --slide; }
-    .slide.doc:not(.tall) > .doc-inner {
-      animation: slide-away linear both; animation-timeline: --slide;
-      animation-range: exit; transform-origin: 50% 0;
-    }
+    /* the slide's children move, not the slide: a moved slide drags its own snap point along */
+    .slide.doc:not(.tall) > * { animation: slide-away linear both; animation-timeline: --slide; animation-range: exit; transform-origin: 50% 0; }
     .js .slide .reveal, .js .slide.visible .reveal {
-      opacity: 1; transform: none; filter: none; transition: none;
-      animation: slide-rise linear both; animation-timeline: view();
-      animation-range: entry 0% entry 80%;
+      opacity: 1; transform: none; transition: none;
+      animation: rise linear both; animation-timeline: view(); animation-range: entry 0% entry 80%;
     }
-    .js .slide .head > * { opacity: 1; transform: none; transition: none; }
   }
 }
 @keyframes slide-away { to { transform: translateY(100vh) scale(.9); opacity: 0; } }
-@keyframes slide-rise { from { opacity: 0; transform: translateY(40px); } }
+@keyframes rise { from { opacity: 0; transform: translateY(40px); } }
 </style>
 </head>
 <body>
@@ -850,18 +821,12 @@ function setSlide(i) {
   $('slide-progress').style.width = (i + 1) / slides.length * 100 + '%';
   railLinks.forEach((a, j) => j === i ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
 }
-// Replay only after a whole slide leaves the viewport. Tall mobile slides stay
-// readable throughout; reverse entrances follow the edge they arrive from.
+// a slide's content fades in once its top is 15% into the screen
 const reveal = new IntersectionObserver(entries => entries.forEach(e => {
-  if (still) { e.target.classList.add('visible'); return; }
-  if (e.isIntersecting) {
-    e.target.classList.add('visible');
-  } else {
-    const distance = innerWidth <= 820 ? 24 : 42;
-    e.target.style.setProperty('--enter-y', `${e.boundingClientRect.top < 0 ? -distance : distance}px`);
-    e.target.classList.remove('visible');
-  }
-}));
+  if (!e.isIntersecting) return;
+  e.target.classList.add('visible');
+  reveal.unobserve(e.target);
+}), { rootMargin: '0px 0px -15% 0px' });
 slides.forEach(s => reveal.observe(s));
 slides[0].classList.add('visible');
 // the current slide is the one under the middle of the screen
