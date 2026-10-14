@@ -114,6 +114,10 @@ claude plugin validate ./.claude-plugin/marketplace.json
 
 Also syntax-check changed `.mjs` files and run `git diff --check`.
 
+## Writing
+
+Always use the Oxford comma in prose, including website copy, documentation, and responses.
+
 ## Versioning
 
 Keep these values synchronized:
