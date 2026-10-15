@@ -382,6 +382,23 @@ td:nth-child(2) { color: var(--warm); }
   .term .caret { animation: none; }
   #slide-progress { transition: none; }
 }
+
+/* slide to slide, where scroll-driven animations exist (desktop only, like the snap): a leaving slide holds still,
+   shrinks and fades while the next one rides up over it, and content rises with the scroll, both ways. A slide
+   taller than the screen (.tall, set below) scrolls normally so none of it is hidden. */
+@supports (animation-timeline: view()) {
+  @media (min-width: 821px) and (prefers-reduced-motion: no-preference) {
+    .slide.doc { view-timeline: --slide; }
+    /* the slide's children move, not the slide: a moved slide drags its own snap point along */
+    .slide.doc:not(.tall) > * { animation: slide-away linear both; animation-timeline: --slide; animation-range: exit; transform-origin: 50% 0; }
+    .js .slide .reveal, .js .slide.visible .reveal {
+      opacity: 1; transform: none; transition: none;
+      animation: rise linear both; animation-timeline: view(); animation-range: entry 0% entry 80%;
+    }
+  }
+}
+@keyframes slide-away { to { transform: translateY(100vh) scale(.9); opacity: 0; } }
+@keyframes rise { from { opacity: 0; transform: translateY(40px); } }
 </style>
   <script defer src="https://stats.novacon.io/script.js" data-website-id="3fad8052-deee-498b-92a9-22955cb3484e"></script>
 </head>
@@ -792,6 +809,11 @@ function trackSlide() {
   if (i !== activeSlide) setSlide(i);
 }
 addEventListener('scroll', () => { trackFrame ||= requestAnimationFrame(trackSlide); }, { passive: true });
+// a slide taller than the screen opts out of the pinned exit above, so its bottom stays readable
+const markTall = () => slides.forEach(s => s.classList.toggle('tall', s.offsetHeight > innerHeight + 1));
+markTall();
+addEventListener('resize', markTall, { passive: true });
+document.fonts?.ready.then(markTall);
 setSlide(0);
 trackSlide();
 
